@@ -1,0 +1,50 @@
+# Python Virtual Environments
+.venv/
+venv/
+ENV/
+env/
+
+# Python Bytecode and Cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment Variables & Secrets
+.env
+.env.*
+!.env.example
+certs/
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs
+*.log
+logs/
+
+# Docker / Storage / Generated Data
+data/
+storage/
+
+# InfluxDB generated data
+influxdb-data/
+
+# Grafana generated data & plugins
+grafana-data/
+grafana/plugins/
+
+# Benchmark artifacts & temp files
+benchmark/results/
+benchmark/output/
+
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini

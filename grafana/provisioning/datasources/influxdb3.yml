@@ -1,0 +1,15 @@
+apiVersion: 1
+
+datasources:
+  - name: InfluxDB 3 Core
+    type: influxdb
+    uid: influxdb3_datasource
+    access: proxy
+    url: https://influxdb:8181
+    isDefault: true
+    editable: true
+    jsonData:
+      version: SQL
+      dbName: server_monitoring
+    secureJsonData:
+      token: ${INFLUXDB_TOKEN}

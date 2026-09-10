@@ -1,0 +1,47 @@
+services:
+  influxdb:
+    image: influxdb:3-core
+    container_name: influxdb3-core
+    restart: unless-stopped
+    ports:
+      - "8181:8181"
+    environment:
+      - INFLUXDB3_NODE_ID=node0
+      - INFLUXDB3_OBJECT_STORE=file
+      - INFLUXDB3_DATA_DIR=/home/influxdb3/.influxdb3
+      - INFLUXDB3_TLS_CERT=/certs/cert.pem
+      - INFLUXDB3_TLS_KEY=/certs/key.pem
+      - INFLUXDB3_HOST_URL=https://127.0.0.1:8181
+      - INFLUXDB3_AUTH_TOKEN=${INFLUXDB_TOKEN}
+      - INFLUXDB3_TLS_NO_VERIFY=true
+    volumes:
+      - influxdb3_data:/home/influxdb3/.influxdb3
+      - ./certs:/certs:ro
+
+  grafana:
+    image: grafana/grafana:11.5.2
+    container_name: grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - INFLUXDB_TOKEN=${INFLUXDB_TOKEN}
+      - INFLUXDB_DATABASE=${INFLUXDB_DATABASE:-server_monitoring}
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./certs/ca-bundle.crt:/etc/ssl/certs/ca-certificates.crt:ro
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards_json:/etc/grafana/provisioning/dashboards_json:ro
+    depends_on:
+      - influxdb
+
+volumes:
+  influxdb3_data:
+    name: influxdb3_data
+  grafana_data:
+    name: grafana_data
