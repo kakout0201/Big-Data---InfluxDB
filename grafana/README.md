@@ -1,5 +1,7 @@
 # Grafana Module — InfluxDB 3 Real-Time Monitoring Dashboard
 
+> **Legacy (Phase 1 – tiểu luận):** tài liệu này mô tả demo giám sát server (`server_monitoring.server_metrics`). Nó sẽ được thay thế khi phần dữ liệu thời tiết được xây dựng — xem `CLAUDE.md` ở root.
+
 Tài liệu hướng dẫn triển khai, cấu hình và sử dụng Grafana Dashboard phục vụ giám sát hạ tầng thời gian thực với **InfluxDB 3 Core** cho đề tài Big Data.
 
 ---

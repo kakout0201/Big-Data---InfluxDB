@@ -1,5 +1,7 @@
 # InfluxDB 3 SQL Analytics Collection
 
+> **Legacy (Phase 1 – tiểu luận):** tài liệu này mô tả demo giám sát server (`server_monitoring.server_metrics`). Nó sẽ được thay thế khi phần dữ liệu thời tiết được xây dựng — xem `CLAUDE.md` ở root.
+
 ## 1. Purpose (Mục đích)
 
 Thư mục này chứa tập hợp các câu truy vấn **SQL tiêu chuẩn (Apache DataFusion SQL dialect)** phục vụ khai thác, thống kê và giám sát dữ liệu chuỗi thời gian được lưu trữ trong **InfluxDB 3 Core**.

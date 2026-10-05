@@ -36,7 +36,7 @@ class InfluxDBConfig:
             ValueError: If required configuration (like INFLUXDB_TOKEN) is
             missing.
         """
-        url = os.getenv("INFLUXDB_URL", "http://localhost:8181").strip()
+        url = os.getenv("INFLUXDB_URL", "https://localhost:8181").strip()
         token = os.getenv("INFLUXDB_TOKEN", "").strip()
         database = os.getenv("INFLUXDB_DATABASE", "server_monitoring").strip()
 

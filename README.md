@@ -1,143 +1,148 @@
-# Nghiên cứu InfluxDB 3 và xây dựng hệ thống giám sát dữ liệu chuỗi thời gian thời gian thực
+# Hệ thống lưu trữ, phân tích và phát hiện bất thường dữ liệu thời tiết chuỗi thời gian sử dụng InfluxDB 3
 
-## 1. Giới thiệu Project
+Đồ án môn **Big Data**.
 
-Đồ án môn học **Big Data** tập trung nghiên cứu kiến trúc công nghệ lõi của **InfluxDB 3** (dựa trên hệ sinh thái Apache Arrow, DataFusion và lưu trữ Parquet) và xây dựng hoàn chỉnh hệ thống giám sát hạ tầng thời gian thực (Real-time Time-Series Infrastructure Monitoring Pipeline).
+> **Trạng thái:** đang phát triển. Hạ tầng (InfluxDB 3 Core, Grafana, Docker, TLS) đã sẵn sàng; pipeline thời tiết đang được xây dựng theo roadmap ở cuối tài liệu.
 
 ---
 
-## 2. Mục tiêu Pipeline Thực nghiệm
+## 1. Project
 
-Hệ thống được thiết kế theo luồng kiến trúc:
+Hệ thống thu thập dữ liệu thời tiết dạng chuỗi thời gian, làm sạch và lưu vào **InfluxDB 3 Core**, phân tích bằng SQL, **phát hiện bất thường** bằng các phương pháp thống kê giải thích được, và trực quan hóa trên **Grafana**.
+
+Repository được phát triển tiếp từ tiểu luận về InfluxDB 3 (demo giám sát server và benchmark). Toàn bộ trạng thái của tiểu luận được lưu ở git tag `phase1-essay`; tài liệu benchmark và kịch bản demo nằm trong `archive/phase1-essay/`.
+
+## 2. Architecture
 
 ```text
-Python Data Generator
-        │
-        │ Batch / Line Protocol
-        ▼
-InfluxDB 3 (Write Path → WAL → Parquet Storage)
-        │
-        │ Apache Arrow / DataFusion Engine
-        ▼
-SQL Query Engine
-        │
-        │ Flight SQL / HTTP API
-        ▼
-Grafana Dashboard
+Weather Data Source
+        ↓
+Data Collection          (Python)
+        ↓
+Data Cleaning / Transformation
+        ↓
+InfluxDB 3 Core          (Line Protocol qua HTTPS :8181)
+        ↓
+SQL / Analysis           (Apache DataFusion SQL)
+        ↓
+Anomaly Detection
+        ↓
+Grafana Dashboard        (:3000, Flight SQL)
 ```
 
----
+## 3. Technology Stack
 
-## 3. Công nghệ Dự kiến Sử dụng
+| Thành phần | Công nghệ |
+|---|---|
+| Database | InfluxDB 3 Core (Apache Arrow, DataFusion, Parquet) |
+| Xử lý dữ liệu | Python 3.11 (`influxdb3-python`, `python-dotenv`) |
+| Truy vấn | SQL (dialect DataFusion) |
+| Trực quan hóa | Grafana 11.5 |
+| Triển khai | Docker Compose |
 
-* **Database Core:** InfluxDB 3 (Engine: Apache Arrow, Apache DataFusion, Apache Parquet)
-* **Data Ingestion:** Python (InfluxDB Client / Flight SQL)
-* **Containerization & Orchestration:** Docker & Docker Compose
-* **Visualization:** Grafana Dashboard
-* **Query Language:** SQL (DataFusion SQL dialect)
+## 4. How to run
 
----
+### Yêu cầu
+- Docker Engine và Docker Compose v2; cổng `8181` và `3000` còn trống.
+- Python 3.11.
+- Chứng chỉ TLS trong `certs/` (không commit lên git): `cert.pem`, `key.pem` (self-signed, SAN gồm `influxdb`, `influxdb3-core`, `localhost`, `127.0.0.1`) và `ca-bundle.crt` (CA bundle mà Grafana dùng để tin chứng chỉ trên).
 
-## 4. Dataset Mô phỏng
+### Các bước
+```bash
+# 1. Cấu hình biến môi trường
+cp .env.example .env        # rồi điền INFLUXDB_TOKEN và GRAFANA_ADMIN_PASSWORD
 
-Hệ thống mô phỏng dữ liệu telemetry hạ tầng phân tán:
-* **Hạ tầng:** 10 máy chủ (server nodes)
-* **Khu vực địa lý:** 3 region (`us-east-1`, `ap-southeast-1`, `eu-central-1`)
-* **Chỉ số theo dõi (Metrics):**
-  * CPU usage (%)
-  * Memory usage (%)
-  * Network traffic (MB/s In/Out)
-  * Error rate (req/s)
-  * Timestamp (nanosecond precision)
+# 2. Khởi động InfluxDB 3 + Grafana
+docker compose up -d
+docker compose ps
 
----
+# 3. Môi trường Python
+python -m venv .venv
+.venv/Scripts/activate      # Linux/macOS: source .venv/bin/activate
+pip install influxdb3-python python-dotenv
+```
 
-## 5. Lộ trình Thực hiện (Project Phases)
+`INFLUXDB_URL` phải là `https://localhost:8181` vì InfluxDB chạy TLS.
 
-* **Phase 1:** Environment Setup (Completed)
-* **Phase 2:** InfluxDB 3 Deployment (Completed)
-* **Phase 3:** Data Model Design (Completed)
-* **Phase 4:** Python Data Generator (Completed)
-* **Phase 5:** SQL Analytics & Aggregations (Completed)
-* **Phase 6:** Batch Ingestion & Optimization
-* **Phase 7:** Performance Benchmarking (Write/Read throughput, Compression ratio)
-* **Phase 8:** Grafana Dashboard Setup
-* **Phase 9:** End-to-End Integration Testing
-* **Phase 10:** Presentation & Final Report
+### Nạp dữ liệu thời tiết
+```bash
+# Dữ liệu lịch sử từ 2024-01-01 tới hôm qua (Archive API), khoảng 1 phút
+python python/weather_collector.py backfill --start 2024-01-01
 
----
+# Các giờ gần nhất (Forecast API); thêm --interval-minutes 60 để chạy liên tục
+python python/weather_collector.py recent --past-days 7
 
-## 6. Cấu trúc Dự án
+# Kiểm tra dữ liệu đã lưu (chỉ đọc)
+python python/weather_collector.py verify
+
+# Unit test cho bước làm sạch (không cần mạng hay database)
+python python/test_weather_cleaning.py
+```
+
+## 5. Data pipeline
+
+| Bước | Trạng thái |
+|---|---|
+| Nguồn dữ liệu | **Open-Meteo** (CC BY 4.0, không cần API key): Archive API cho dữ liệu lịch sử, Forecast API cho các giờ gần nhất |
+| Địa điểm | TP.HCM (`hcm`), Hà Nội (`hanoi`), Đà Nẵng (`danang`), dữ liệu theo giờ từ 2024-01-01 |
+| Thu thập | `python/weather_collector.py`: nạp theo chunk, ghi batch, tự kiểm tra `count(*)` sau khi ghi |
+| Làm sạch | `python/weather_cleaning.py`: chuẩn hóa thời gian UTC, kiểm tra đơn vị, ép kiểu, loại giá trị không thể xảy ra về mặt vật lý (giữ lại giá trị cực đoan thật), khử trùng, báo cáo số liệu từng bước |
+| Ghi vào InfluxDB | Database `weather`, bảng `weather_hourly`; dữ liệu archive ghi đè dữ liệu forecast của cùng giờ |
+
+Nguồn dữ liệu: *Weather data by [Open-Meteo.com](https://open-meteo.com/)* (CC BY 4.0).
+
+## 6. InfluxDB
+
+- Một service InfluxDB 3 Core (`influxdb:3-core`), container `influxdb3-core`, dữ liệu lưu trong Docker volume `influxdb3_data`, bật TLS và xác thực bằng token.
+- Schema dữ liệu thời tiết:
+
+  | Thành phần | Giá trị |
+  |---|---|
+  | Database / bảng | `weather` / `weather_hourly` |
+  | Tag | `location` (`hcm`, `hanoi`, `danang`) |
+  | Timestamp | đầu mỗi giờ, UTC |
+  | Field (float) | `temperature_c`, `humidity_pct`, `dew_point_c`, `precipitation_mm`, `pressure_msl_hpa`, `cloud_cover_pct`, `wind_speed_ms`, `wind_direction_deg`, `wind_gusts_ms` |
+  | Field khác | `weather_code` (integer, mã WMO), `data_source` (string: `forecast` / `archive`) |
+- Truy vấn thủ công:
+  ```bash
+  docker exec influxdb3-core influxdb3 query --database <DATABASE> --token <TOKEN> "SELECT ..."
+  ```
+
+## 7. Anomaly Detection
+
+Chức năng trọng tâm của đồ án. Các phương pháp thống kê được đánh giá: **Threshold, Z-score, IQR, Moving Average, Rolling Statistics**. Quy trình: khảo sát dữ liệu → phân tích phân phối → so sánh các phương pháp → chọn → triển khai → đánh giá. Phương pháp cuối cùng và lý do lựa chọn sẽ được ghi lại tại đây.
+
+## 8. Grafana
+
+- Truy cập: http://localhost:3000, đăng nhập bằng `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` trong `.env`.
+- Datasource và dashboard được provisioning tự động từ `grafana/provisioning/` và `grafana/dashboards_json/`.
+- Dashboard hiện có là dashboard giám sát server của tiểu luận; dashboard thời tiết sẽ được xây dựng ở giai đoạn P8.
+
+## 9. Development
 
 ```text
-INFLUXDB/
-│
-├── .git/               # Quản lý phiên bản Git
-├── .gitignore          # File cấu hình bỏ qua file rác / nhị phân / môi trường ảo
-├── .env.example        # Mẫu biến môi trường (không chứa secret thật)
-├── docker-compose.yml  # Cấu hình container InfluxDB 3 Core
-├── README.md           # Tài liệu tổng quan dự án
-│
-├── python/             # Module Data Generator & InfluxDB Ingestion scripts
-│   ├── config.py
-│   ├── generator.py
-│   └── README.md
-│
-├── queries/            # Module tập hợp các câu truy vấn SQL Analytics
-│   ├── 01_basic.sql
-│   ├── 02_aggregation.sql
-│   ├── 03_time_series.sql
-│   └── README.md
-│
-├── benchmark/          # Module kịch bản kiểm thử hiệu năng và báo cáo
-│   └── README.md
-│
-├── grafana/            # Module cấu hình datasource và dashboard provisioning
-│   └── README.md
-│
-├── docs/               # Module tài liệu nghiên cứu và báo cáo đồ án
-│   └── README.md
-│
-└── .venv/              # Môi trường ảo Python (Local only - ignored by Git)
+python/          Pipeline weather (open_meteo, weather_cleaning, weather_schema, weather_collector) + test;
+                 generator.py là demo legacy của tiểu luận
+queries/         SQL mẫu (legacy, cho bảng server_metrics)
+grafana/         Provisioning datasource + dashboard
+archive/         Tài liệu và code của tiểu luận (đóng băng, không bảo trì)
+CLAUDE.md        Hướng dẫn chi tiết cho việc phát triển với Claude Code
 ```
 
----
+### Roadmap
 
-## 7. InfluxDB 3 Core Local Setup
+| Giai đoạn | Nội dung | Trạng thái |
+|---|---|---|
+| P1 | Dọn dẹp repository | Hoàn thành |
+| P2 | Chọn và khảo sát nguồn dữ liệu thời tiết | Hoàn thành |
+| P3 | Thu thập dữ liệu | Hoàn thành |
+| P4 | Làm sạch dữ liệu | Hoàn thành |
+| P5 | Schema InfluxDB cho dữ liệu thời tiết | Hoàn thành |
+| P6 | Truy vấn và phân tích | Tiếp theo |
+| P7 | Phát hiện bất thường | |
+| P8 | Grafana dashboard | |
+| P9 | Kiểm thử và đánh giá | |
+| P10 | Demo và báo cáo | |
 
-### Yêu cầu tiên quyết
-* Docker Engine 24+ & Docker Compose v2+
-* Cổng mạng `8181` khả dụng.
-
-### Cấu hình InfluxDB 3 Core
-* **Docker Image:** `influxdb:3-core`
-* **Container Name:** `influxdb3-core`
-* **Exposed Port:** `8181`
-* **Storage Volume:** Docker named volume `influxdb3_data` (lưu trữ metadata, WAL và dữ liệu Parquet).
-* **Default Database:** `server_monitoring`
-* **Retention Policy:** `30d` (30 ngày)
-
-### Vận hành Container
-* **Khởi động:**
-  ```bash
-  docker compose up -d
-  ```
-* **Dừng container:**
-  ```bash
-  docker compose stop
-  ```
-* **Khởi động lại:**
-  ```bash
-  docker compose start
-  ```
-* **Kiểm tra trạng thái:**
-  ```bash
-  docker compose ps
-  docker compose logs -f influxdb
-  ```
-* **Kiểm tra API Health:**
-  ```bash
-  curl -H "Authorization: Bearer <INFLUXDB_TOKEN>" http://localhost:8181/health
-  ```
-*(Lưu ý: Token quản trị được lưu trong file `.env` local và tuyệt đối không commit lên Git).*
-
+### Bảo mật
+Không commit `.env`, token, mật khẩu hay private key. `.env.example` chỉ chứa placeholder.

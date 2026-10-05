@@ -22,6 +22,7 @@ certs/
 # IDEs and Editors
 .vscode/
 .idea/
+.claude/settings.local.json
 *.swp
 *.swo
 
@@ -41,8 +42,8 @@ grafana-data/
 grafana/plugins/
 
 # Benchmark artifacts & temp files
-benchmark/results/
-benchmark/output/
+archive/phase1-essay/benchmark/results/
+archive/phase1-essay/benchmark/output/
 
 # Operating System Files
 .DS_Store
