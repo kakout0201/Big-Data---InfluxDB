@@ -2,7 +2,7 @@
 
 Đồ án môn **Big Data**.
 
-> **Trạng thái:** đang phát triển. Hạ tầng (InfluxDB 3 Core, Grafana, Docker, TLS) đã sẵn sàng; pipeline thời tiết đang được xây dựng theo roadmap ở cuối tài liệu.
+> **Trạng thái:** đang phát triển. Pipeline thu thập → làm sạch → InfluxDB → phát hiện bất thường → Grafana đã chạy đầy đủ; còn lại kiểm thử/đánh giá và báo cáo (xem roadmap ở cuối tài liệu).
 
 ---
 
@@ -132,16 +132,27 @@ python python/anomaly_job.py             # xóa rồi ghi lại bảng, đối c
 ## 8. Grafana
 
 - Truy cập: http://localhost:3000, đăng nhập bằng `GRAFANA_ADMIN_USER` / `GRAFANA_ADMIN_PASSWORD` trong `.env`.
-- Datasource và dashboard được provisioning tự động từ `grafana/provisioning/` và `grafana/dashboards_json/`.
-- Dashboard hiện có là dashboard giám sát server của tiểu luận; dashboard thời tiết sẽ được xây dựng ở giai đoạn P8.
+- Datasource `InfluxDB 3 Weather` (database `weather`, SQL qua Flight SQL) và dashboard được provisioning tự động từ `grafana/provisioning/` và `grafana/dashboards_json/`.
+- Dashboard **Thời tiết & Bất thường**: http://localhost:3000/d/weather_analytics. Bố cục 4 hàng:
+  1. **Tổng quan tức thời:** giá trị mới nhất kèm sparkline, gauge nhiệt độ và gió giật theo thang khí tượng, số cờ bất thường.
+  2. **Diễn biến chuỗi thời gian:** nhiệt độ và điểm sương; khí áp và lượng mưa trên hai trục.
+  3. **Phát hiện bất thường:** dòng thời gian bất thường theo nhóm hiện tượng; khí áp và gió giật có chấm đỏ tại giờ bị gắn cờ.
+  4. **Nhật ký bất thường:** bảng kèm mức độ và câu giải thích.
+- Chọn địa điểm bằng biến `Địa điểm`. Liên kết nhanh trên thanh tiêu đề mở đúng sự kiện: bão Yagi (Hà Nội, 06–09/09/2024), nắng nóng TP.HCM (04/2024), 7 ngày gần nhất.
+- Trước khi demo, cập nhật dữ liệu và bất thường:
+  ```bash
+  python python/weather_collector.py recent --past-days 7
+  python python/anomaly_job.py
+  python python/check_dashboard.py      # chạy mọi truy vấn của dashboard qua Grafana
+  ```
+- Chi tiết: `grafana/README.md`.
 
 ## 9. Development
 
 ```text
-python/          Pipeline weather (open_meteo, weather_cleaning, weather_schema, weather_collector) + test;
-                 generator.py là demo legacy của tiểu luận
-queries/         SQL mẫu (legacy, cho bảng server_metrics)
-grafana/         Provisioning datasource + dashboard
+python/          Pipeline weather, phát hiện bất thường, kiểm tra dashboard + unit test (xem python/README.md)
+queries/         SQL phân tích dữ liệu thời tiết (queries/weather_analysis/)
+grafana/         Provisioning datasource + dashboard weather_analytics.json
 archive/         Tài liệu và code của tiểu luận (đóng băng, không bảo trì)
 CLAUDE.md        Hướng dẫn chi tiết cho việc phát triển với Claude Code
 ```
@@ -157,8 +168,8 @@ CLAUDE.md        Hướng dẫn chi tiết cho việc phát triển với Claude
 | P5 | Schema InfluxDB cho dữ liệu thời tiết | Hoàn thành |
 | P6 | Truy vấn và phân tích | Hoàn thành |
 | P7 | Phát hiện bất thường | Hoàn thành |
-| P8 | Grafana dashboard | Tiếp theo |
-| P9 | Kiểm thử và đánh giá | |
+| P8 | Grafana dashboard | Hoàn thành |
+| P9 | Kiểm thử và đánh giá | Tiếp theo |
 | P10 | Demo và báo cáo | |
 
 ### Bảo mật

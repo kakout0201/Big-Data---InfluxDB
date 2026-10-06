@@ -1,0 +1,2081 @@
+{
+  "uid": "weather_analytics",
+  "title": "Thời tiết & Bất thường — InfluxDB 3",
+  "description": "Dữ liệu thời tiết theo giờ (Open-Meteo) và kết quả phát hiện bất thường (weather_anomalies).",
+  "tags": [
+    "weather",
+    "anomaly",
+    "influxdb3"
+  ],
+  "timezone": "Asia/Ho_Chi_Minh",
+  "editable": true,
+  "graphTooltip": 1,
+  "fiscalYearStartMonth": 0,
+  "liveNow": false,
+  "refresh": "5m",
+  "schemaVersion": 39,
+  "version": 1,
+  "weekStart": "monday",
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "1m",
+      "5m",
+      "15m",
+      "1h"
+    ]
+  },
+  "links": [
+    {
+      "title": "Siêu bão Yagi (06–09/09/2024)",
+      "type": "link",
+      "icon": "bolt",
+      "targetBlank": false,
+      "tooltip": "Hà Nội, 06/09/2024 00:00 → 09/09/2024 24:00 giờ VN",
+      "url": "/d/weather_analytics/?var-location=hanoi&from=1725555600000&to=1725901200000",
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "tags": []
+    },
+    {
+      "title": "Nắng nóng TP.HCM (04/2024)",
+      "type": "link",
+      "icon": "info",
+      "targetBlank": false,
+      "tooltip": "TP.HCM, 01/04/2024 → 30/04/2024 giờ VN",
+      "url": "/d/weather_analytics/?var-location=hcm&from=1711904400000&to=1714496400000",
+      "asDropdown": false,
+      "includeVars": false,
+      "keepTime": false,
+      "tags": []
+    },
+    {
+      "title": "7 ngày gần nhất",
+      "type": "link",
+      "icon": "dashboard",
+      "targetBlank": false,
+      "tooltip": "Giữ địa điểm đang chọn",
+      "url": "/d/weather_analytics/?from=now-7d&to=now",
+      "asDropdown": false,
+      "includeVars": true,
+      "keepTime": false,
+      "tags": []
+    }
+  ],
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "templating": {
+    "list": [
+      {
+        "type": "custom",
+        "name": "location",
+        "label": "Địa điểm",
+        "query": "TP.HCM : hcm, Hà Nội : hanoi, Đà Nẵng : danang",
+        "current": {
+          "selected": true,
+          "text": "TP.HCM",
+          "value": "hcm"
+        },
+        "options": [],
+        "multi": false,
+        "includeAll": false,
+        "hide": 0,
+        "skipUrlSync": false
+      },
+      {
+        "type": "interval",
+        "name": "time_bin",
+        "label": "Gom nhóm",
+        "query": "1h,6h,1d",
+        "auto": true,
+        "auto_count": 200,
+        "auto_min": "1h",
+        "current": {
+          "selected": false,
+          "text": "auto",
+          "value": "$__auto_interval_time_bin"
+        },
+        "options": [],
+        "refresh": 2,
+        "hide": 0,
+        "skipUrlSync": false
+      },
+      {
+        "type": "custom",
+        "name": "field",
+        "label": "Biến (bảng nhật ký)",
+        "query": "Nhiệt độ : temperature_c, Khí áp : pressure_msl_hpa, Gió giật : wind_gusts_ms, Mưa 24h : rain_24h_mm",
+        "current": {
+          "selected": true,
+          "text": [
+            "All"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "options": [],
+        "multi": true,
+        "includeAll": true,
+        "hide": 0,
+        "skipUrlSync": false
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "id": 1,
+      "title": "Tổng quan tức thời",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "type": "stat",
+      "id": 2,
+      "title": "Nhiệt độ",
+      "description": "Giá trị đo gần nhất trong khung đang chọn; sparkline = giá trị cuối mỗi khung $time_bin.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb3_weather"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 0,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb3_weather"
+          },
+          "rawSql": "SELECT date_bin(INTERVAL '$time_bin', time, TIMESTAMP '1970-01-01T17:00:00Z') AS time, last_value(temperature_c ORDER BY time) AS \"Nhiệt độ\" FROM weather_hourly WHERE time >= $__timeFrom() AND time <= $__timeTo() AND location = '$location' GROUP BY 1 ORDER BY 1",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#5794F2",
+                "value": null
+              },
+              {
+                "color": "#73BF69",
+                "value": 15
+              },
+              {
+                "color": "#FADE2A",
+                "value": 35
+              },
+              {
+                "color": "#FF9830",
+                "value": 37
+              },
+              {
+                "color": "#F2495C",
+                "value": 39
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "graphMode": "area",
+        "colorMode": "value",
+        "justifyMode": "center",
+        "textMode": "value",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "type": "stat",
+      "id": 3,
+      "title": "Độ ẩm",
+      "description": "Độ ẩm tương đối gần nhất.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb3_weather"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 4,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb3_weather"
+          },
+          "rawSql": "SELECT date_bin(INTERVAL '$time_bin', time, TIMESTAMP '1970-01-01T17:00:00Z') AS time, last_value(humidity_pct ORDER BY time) AS \"Độ ẩm\" FROM weather_hourly WHERE time >= $__timeFrom() AND time <= $__timeTo() AND location = '$location' GROUP BY 1 ORDER BY 1",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "humidity",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#5794F2",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "graphMode": "area",
+        "colorMode": "value",
+        "justifyMode": "center",
+        "textMode": "value",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "type": "stat",
+      "id": 4,
+      "title": "Khí áp (MSL)",
+      "description": "Áp suất quy về mực nước biển. Đỏ < 990 hPa, cam < 1000 hPa.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb3_weather"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 8,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb3_weather"
+          },
+          "rawSql": "SELECT date_bin(INTERVAL '$time_bin', time, TIMESTAMP '1970-01-01T17:00:00Z') AS time, last_value(pressure_msl_hpa ORDER BY time) AS \"Khí áp\" FROM weather_hourly WHERE time >= $__timeFrom() AND time <= $__timeTo() AND location = '$location' GROUP BY 1 ORDER BY 1",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "pressurehpa",
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#F2495C",
+                "value": null
+              },
+              {
+                "color": "#FF9830",
+                "value": 990
+              },
+              {
+                "color": "#73BF69",
+                "value": 1000
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "graphMode": "area",
+        "colorMode": "value",
+        "justifyMode": "center",
+        "textMode": "value",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "type": "stat",
+      "id": 5,
+      "title": "Gió giật",
+      "description": "Gió giật gần nhất; màu theo thang Beaufort (cấp 6 / 8 / 10).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb3_weather"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 12,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb3_weather"
+          },
+          "rawSql": "SELECT date_bin(INTERVAL '$time_bin', time, TIMESTAMP '1970-01-01T17:00:00Z') AS time, last_value(wind_gusts_ms ORDER BY time) AS \"Gió giật\" FROM weather_hourly WHERE time >= $__timeFrom() AND time <= $__timeTo() AND location = '$location' GROUP BY 1 ORDER BY 1",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "velocityms",
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#73BF69",
+                "value": null
+              },
+              {
+                "color": "#FADE2A",
+                "value": 10.8
+              },
+              {
+                "color": "#FF9830",
+                "value": 17.2
+              },
+              {
+                "color": "#F2495C",
+                "value": 24.5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "graphMode": "area",
+        "colorMode": "value",
+        "justifyMode": "center",
+        "textMode": "value",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "type": "stat",
+      "id": 6,
+      "title": "Tổng mưa 24h",
+      "description": "Tổng lượng mưa 24 giờ trượt kết thúc tại giờ cuối của khung đang chọn. Vàng ≥ 16 mm (mưa vừa), cam ≥ 50 mm (mưa to), đỏ ≥ 100 mm (mưa rất to).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb3_weather"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 16,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb3_weather"
+          },
+          "rawSql": "SELECT date_bin(INTERVAL '$time_bin', time, TIMESTAMP '1970-01-01T17:00:00Z') AS time, last_value(rain_24h ORDER BY time) AS \"Mưa 24h\" FROM ( SELECT time, sum(precipitation_mm) OVER (ORDER BY time ROWS BETWEEN 23 PRECEDING AND CURRENT ROW) AS rain_24h FROM weather_hourly WHERE time >= $__timeFrom() - INTERVAL '23 hours' AND time <= $__timeTo() AND location = '$location' ) r WHERE time >= $__timeFrom() AND time <= $__timeTo() GROUP BY 1 ORDER BY 1",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "suffix: mm",
+          "decimals": 1,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#73BF69",
+                "value": null
+              },
+              {
+                "color": "#FADE2A",
+                "value": 16
+              },
+              {
+                "color": "#FF9830",
+                "value": 50
+              },
+              {
+                "color": "#F2495C",
+                "value": 100
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "graphMode": "area",
+        "colorMode": "value",
+        "justifyMode": "center",
+        "textMode": "value",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "type": "stat",
+      "id": 7,
+      "title": "Cờ bất thường",
+      "description": "Tổng số cờ trong bảng weather_anomalies (mỗi phương pháp × giờ) trong khung thời gian đang chọn. Dữ liệu dẫn xuất: chạy python/anomaly_job.py để cập nhật.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb3_weather"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 4,
+        "x": 20,
+        "y": 1
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb3_weather"
+          },
+          "rawSql": "SELECT date_bin(INTERVAL '$time_bin', time, TIMESTAMP '1970-01-01T17:00:00Z') AS time, count(*) AS \"Cờ bất thường\" FROM weather_anomalies WHERE time >= $__timeFrom() AND time <= $__timeTo() AND location = '$location' GROUP BY 1 ORDER BY 1",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#73BF69",
+                "value": null
+              },
+              {
+                "color": "#FF9830",
+                "value": 1
+              },
+              {
+                "color": "#F2495C",
+                "value": 100
+              }
+            ]
+          },
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "sum"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "graphMode": "area",
+        "colorMode": "background",
+        "justifyMode": "center",
+        "textMode": "value",
+        "orientation": "auto",
+        "wideLayout": true,
+        "showPercentChange": false
+      }
+    },
+    {
+      "type": "gauge",
+      "id": 8,
+      "title": "Nhiệt độ hiện tại",
+      "description": "Xanh dương < 15 °C (rét), xanh lá bình thường, vàng ≥ 35 °C (nắng nóng), cam ≥ 37 °C (gay gắt), đỏ ≥ 39 °C (đặc biệt gay gắt).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb3_weather"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 6,
+        "x": 0,
+        "y": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb3_weather"
+          },
+          "rawSql": "SELECT time, temperature_c AS \"Nhiệt độ\" FROM weather_hourly WHERE time >= $__timeTo() - INTERVAL '1 day' AND time >= $__timeFrom() AND time <= $__timeTo() AND location = '$location' ORDER BY time DESC LIMIT 1",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "celsius",
+          "decimals": 1,
+          "min": 0,
+          "max": 45,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#5794F2",
+                "value": null
+              },
+              {
+                "color": "#73BF69",
+                "value": 15
+              },
+              {
+                "color": "#FADE2A",
+                "value": 35
+              },
+              {
+                "color": "#FF9830",
+                "value": 37
+              },
+              {
+                "color": "#F2495C",
+                "value": 39
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdMarkers": true,
+        "showThresholdLabels": false,
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "sizing": "auto",
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "gauge",
+      "id": 9,
+      "title": "Gió giật hiện tại",
+      "description": "Thang Beaufort: vàng cấp 6 (≥ 10,8 m/s), cam cấp 8 (≥ 17,2 m/s), đỏ cấp 10 (≥ 24,5 m/s).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb3_weather"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 6,
+        "x": 6,
+        "y": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb3_weather"
+          },
+          "rawSql": "SELECT time, wind_gusts_ms AS \"Gió giật\" FROM weather_hourly WHERE time >= $__timeTo() - INTERVAL '1 day' AND time >= $__timeFrom() AND time <= $__timeTo() AND location = '$location' ORDER BY time DESC LIMIT 1",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "velocityms",
+          "decimals": 1,
+          "min": 0,
+          "max": 35,
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#73BF69",
+                "value": null
+              },
+              {
+                "color": "#FADE2A",
+                "value": 10.8
+              },
+              {
+                "color": "#FF9830",
+                "value": 17.2
+              },
+              {
+                "color": "#F2495C",
+                "value": 24.5
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showThresholdMarkers": true,
+        "showThresholdLabels": false,
+        "minVizHeight": 75,
+        "minVizWidth": 75,
+        "sizing": "auto",
+        "orientation": "auto"
+      }
+    },
+    {
+      "type": "bargauge",
+      "id": 10,
+      "title": "Số giờ bị gắn cờ theo nhóm",
+      "description": "Số giờ khác nhau bị ít nhất một phương pháp gắn cờ, theo nhóm hiện tượng.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb3_weather"
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 12,
+        "x": 12,
+        "y": 6
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb3_weather"
+          },
+          "rawSql": "SELECT CASE WHEN method = 'stuck' THEN 'Dữ liệu kẹt' WHEN field = 'temperature_c' THEN 'Nắng nóng kéo dài' WHEN field = 'pressure_msl_hpa' THEN 'Áp suất thấp' WHEN field = 'wind_gusts_ms' THEN 'Gió giật mạnh' ELSE 'Mưa 24h lớn' END AS \"Nhóm\", count(DISTINCT time) AS \"Số giờ bị gắn cờ\" FROM weather_anomalies WHERE time >= $__timeFrom() AND time <= $__timeTo() AND location = '$location' GROUP BY 1 ORDER BY 2 DESC",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "decimals": 0,
+          "min": 0,
+          "noValue": "Không có bất thường",
+          "color": {
+            "mode": "continuous-YlRd"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#73BF69",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        },
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "valueMode": "color",
+        "namePlacement": "left",
+        "showUnfilled": true,
+        "text": {
+          "titleSize": 15,
+          "valueSize": 26
+        },
+        "sizing": "auto",
+        "minVizHeight": 16,
+        "minVizWidth": 8,
+        "maxVizHeight": 300
+      }
+    },
+    {
+      "type": "row",
+      "id": 11,
+      "title": "Diễn biến chuỗi thời gian",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 13
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 12,
+      "title": "Nhiệt độ & điểm sương",
+      "description": "Trung bình theo khung $time_bin. Khoảng cách giữa hai đường là độ khô của không khí; đường đứt nét là ngưỡng nắng nóng 35 °C.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb3_weather"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 14
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb3_weather"
+          },
+          "rawSql": "SELECT date_bin(INTERVAL '$time_bin', time, TIMESTAMP '1970-01-01T17:00:00Z') AS time, avg(temperature_c) AS \"Nhiệt độ\", avg(dew_point_c) AS \"Điểm sương\" FROM weather_hourly WHERE time >= $__timeFrom() AND time <= $__timeTo() AND location = '$location' GROUP BY 1 ORDER BY 1",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 18,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            },
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              },
+              {
+                "color": "#FF9830",
+                "value": 35
+              }
+            ]
+          },
+          "unit": "celsius"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Nhiệt độ"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#FF9830"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Điểm sương"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#73BF69"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "min",
+            "mean",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 13,
+      "title": "Khí áp & lượng mưa",
+      "description": "Trục trái: khí áp trung bình (đường). Trục phải: tổng mưa mỗi khung (cột). Khí áp tụt sâu đi kèm cột mưa cao là dấu hiệu của bão/áp thấp (ví dụ Yagi 07/09/2024).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb3_weather"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 14
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb3_weather"
+          },
+          "rawSql": "SELECT date_bin(INTERVAL '$time_bin', time, TIMESTAMP '1970-01-01T17:00:00Z') AS time, avg(pressure_msl_hpa) AS \"Khí áp\", sum(precipitation_mm) AS \"Lượng mưa\" FROM weather_hourly WHERE time >= $__timeFrom() AND time <= $__timeTo() AND location = '$location' GROUP BY 1 ORDER BY 1",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 18,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Khí áp"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
+              },
+              {
+                "id": "unit",
+                "value": "pressurehpa"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "left"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "hPa"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Lượng mưa"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#1F60C4"
+                }
+              },
+              {
+                "id": "unit",
+                "value": "suffix: mm"
+              },
+              {
+                "id": "custom.axisPlacement",
+                "value": "right"
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "bars"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 80
+              },
+              {
+                "id": "custom.gradientMode",
+                "value": "none"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 1
+              },
+              {
+                "id": "custom.axisSoftMin",
+                "value": 0
+              },
+              {
+                "id": "custom.axisLabel",
+                "value": "mm"
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "min",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "type": "row",
+      "id": 14,
+      "title": "Phát hiện bất thường",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      }
+    },
+    {
+      "type": "state-timeline",
+      "id": 15,
+      "title": "Dòng thời gian bất thường",
+      "description": "Mỗi dải là một nhóm hiện tượng; màu là mức cao nhất trong khung $time_bin. Nắng nóng kéo dài = trung bình 168 giờ của Z-score khí hậu ≥ 1,0. Áp suất thấp = Z-score khí hậu ≤ −3. Gió/mưa = IQR theo tháng hoặc ngưỡng tuyệt đối. Trục thời gian sinh bằng generate_series nên panel chỉ đọc bảng weather_anomalies.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb3_weather"
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 24
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb3_weather"
+          },
+          "rawSql": "WITH flags AS ( SELECT date_bin(INTERVAL '$time_bin', time, TIMESTAMP '1970-01-01T17:00:00Z') AS t, max(CASE WHEN method = 'persistent_climate_zscore' THEN CASE WHEN severity LIKE '%gay gắt%' THEN 3 WHEN severity LIKE 'nắng nóng%' THEN 2 ELSE 1 END END) AS heat, max(CASE WHEN field = 'pressure_msl_hpa' AND method = 'climate_zscore' THEN CASE WHEN score <= -6 THEN 3 WHEN score <= -4 THEN 2 ELSE 1 END END) AS pressure, max(CASE WHEN field = 'wind_gusts_ms' THEN CASE WHEN value >= 24.5 THEN 3 WHEN value >= 17.2 THEN 2 ELSE 1 END END) AS gust, max(CASE WHEN field = 'rain_24h_mm' THEN CASE WHEN value >= 100 THEN 3 WHEN value >= 50 THEN 2 ELSE 1 END END) AS rain, max(CASE WHEN method = 'stuck' THEN 1 END) AS stuck FROM weather_anomalies WHERE time >= $__timeFrom() AND time <= $__timeTo() AND location = '$location' GROUP BY 1 ), grid AS ( SELECT value AS t FROM generate_series( date_bin(INTERVAL '$time_bin', $__timeFrom(), TIMESTAMP '1970-01-01T17:00:00Z'), $__timeTo(), INTERVAL '$time_bin') ) SELECT grid.t AS time, coalesce(flags.heat, 0) AS \"Nắng nóng kéo dài\", coalesce(flags.pressure, 0) AS \"Áp suất thấp\", coalesce(flags.gust, 0) AS \"Gió giật mạnh\", coalesce(flags.rain, 0) AS \"Mưa 24h lớn\", coalesce(flags.stuck, 0) AS \"Dữ liệu kẹt\" FROM grid LEFT JOIN flags ON grid.t = flags.t ORDER BY 1",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 85,
+            "lineWidth": 0,
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "#2B3542",
+                "value": null
+              },
+              {
+                "color": "#FADE2A",
+                "value": 1
+              },
+              {
+                "color": "#FF9830",
+                "value": 2
+              },
+              {
+                "color": "#F2495C",
+                "value": 3
+              }
+            ]
+          },
+          "mappings": [
+            {
+              "type": "value",
+              "options": {
+                "0": {
+                  "text": "Bình thường",
+                  "color": "#2B3542",
+                  "index": 0
+                },
+                "1": {
+                  "text": "Bất thường",
+                  "color": "#FADE2A",
+                  "index": 1
+                },
+                "2": {
+                  "text": "Mạnh",
+                  "color": "#FF9830",
+                  "index": 2
+                },
+                "3": {
+                  "text": "Nguy hiểm",
+                  "color": "#F2495C",
+                  "index": 3
+                }
+              }
+            }
+          ]
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Nắng nóng kéo dài"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "Bình thường",
+                        "color": "#2B3542",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "Ấm bất thường kéo dài",
+                        "color": "#FADE2A",
+                        "index": 1
+                      },
+                      "2": {
+                        "text": "Nắng nóng ≥ 35 °C",
+                        "color": "#FF9830",
+                        "index": 2
+                      },
+                      "3": {
+                        "text": "Gay gắt ≥ 37 °C",
+                        "color": "#F2495C",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Áp suất thấp"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "Bình thường",
+                        "color": "#2B3542",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "Thấp 3–4σ",
+                        "color": "#FADE2A",
+                        "index": 1
+                      },
+                      "2": {
+                        "text": "Thấp 4–6σ",
+                        "color": "#FF9830",
+                        "index": 2
+                      },
+                      "3": {
+                        "text": "Rất thấp ≥ 6σ",
+                        "color": "#F2495C",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Gió giật mạnh"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "Bình thường",
+                        "color": "#2B3542",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "Bất thường (IQR)",
+                        "color": "#FADE2A",
+                        "index": 1
+                      },
+                      "2": {
+                        "text": "Cấp 8–9",
+                        "color": "#FF9830",
+                        "index": 2
+                      },
+                      "3": {
+                        "text": "Cấp ≥ 10",
+                        "color": "#F2495C",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Mưa 24h lớn"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "Bình thường",
+                        "color": "#2B3542",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "Bất thường (IQR)",
+                        "color": "#FADE2A",
+                        "index": 1
+                      },
+                      "2": {
+                        "text": "Mưa to ≥ 50 mm",
+                        "color": "#FF9830",
+                        "index": 2
+                      },
+                      "3": {
+                        "text": "Mưa rất to ≥ 100 mm",
+                        "color": "#F2495C",
+                        "index": 3
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Dữ liệu kẹt"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "0": {
+                        "text": "Bình thường",
+                        "color": "#2B3542",
+                        "index": 0
+                      },
+                      "1": {
+                        "text": "Giá trị kẹt ≥ 6 giờ",
+                        "color": "#B877D9",
+                        "index": 1
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Dữ liệu kẹt"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "#2B3542",
+                      "value": null
+                    },
+                    {
+                      "color": "#B877D9",
+                      "value": 1
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "mergeValues": true,
+        "showValue": "never",
+        "alignValue": "left",
+        "rowHeight": 0.8,
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": false
+        },
+        "tooltip": {
+          "mode": "single",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 16,
+      "title": "Khí áp với điểm bất thường",
+      "description": "Đường: khí áp thấp nhất trong mỗi khung. Chấm đỏ: giờ bị Z-score khí hậu (k = 3) gắn cờ. Chấm xám: trung bình khí hậu cùng tháng, cùng giờ các năm khác tại chính giờ đó.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb3_weather"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 0,
+        "y": 32
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb3_weather"
+          },
+          "rawSql": "SELECT date_bin(INTERVAL '$time_bin', time, TIMESTAMP '1970-01-01T17:00:00Z') AS time, min(pressure_msl_hpa) AS \"Khí áp\" FROM weather_hourly WHERE time >= $__timeFrom() AND time <= $__timeTo() AND location = '$location' GROUP BY 1 ORDER BY 1",
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb3_weather"
+          },
+          "rawSql": "SELECT time, value AS \"Bất thường: áp suất thấp\" FROM weather_anomalies WHERE time >= $__timeFrom() AND time <= $__timeTo() AND location = '$location' AND field = 'pressure_msl_hpa' AND method = 'climate_zscore' ORDER BY time",
+          "format": "table"
+        },
+        {
+          "refId": "C",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb3_weather"
+          },
+          "rawSql": "SELECT time, baseline AS \"TB khí hậu\" FROM weather_anomalies WHERE time >= $__timeFrom() AND time <= $__timeTo() AND location = '$location' AND field = 'pressure_msl_hpa' AND method = 'climate_zscore' ORDER BY time",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 18,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "thresholdsStyle": {
+              "mode": "off"
+            },
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              }
+            ]
+          },
+          "unit": "pressurehpa"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Khí áp"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#5794F2"
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 10
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bất thường: áp suất thấp"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#F2495C"
+                }
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "points"
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 9
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "always"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.spanNulls",
+                "value": false
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "TB khí hậu"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#8E8E8E"
+                }
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "points"
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 4
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "always"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.spanNulls",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "min",
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "id": 17,
+      "title": "Gió giật với điểm bất thường",
+      "description": "Đường: gió giật cao nhất trong mỗi khung. Chấm đỏ: giờ bị IQR theo tháng hoặc ngưỡng cấp 8 gắn cờ. Đường đứt nét: cấp 8 (17,2 m/s) và cấp 10 (24,5 m/s).",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb3_weather"
+      },
+      "gridPos": {
+        "h": 9,
+        "w": 12,
+        "x": 12,
+        "y": 32
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb3_weather"
+          },
+          "rawSql": "SELECT date_bin(INTERVAL '$time_bin', time, TIMESTAMP '1970-01-01T17:00:00Z') AS time, max(wind_gusts_ms) AS \"Gió giật\" FROM weather_hourly WHERE time >= $__timeFrom() AND time <= $__timeTo() AND location = '$location' GROUP BY 1 ORDER BY 1",
+          "format": "table"
+        },
+        {
+          "refId": "B",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb3_weather"
+          },
+          "rawSql": "SELECT time, max(value) AS \"Bất thường: gió giật\" FROM weather_anomalies WHERE time >= $__timeFrom() AND time <= $__timeTo() AND location = '$location' AND field = 'wind_gusts_ms' GROUP BY time ORDER BY time",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "lineWidth": 2,
+            "fillOpacity": 18,
+            "gradientMode": "opacity",
+            "showPoints": "never",
+            "pointSize": 5,
+            "spanNulls": true,
+            "axisBorderShow": false,
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "thresholdsStyle": {
+              "mode": "dashed"
+            },
+            "stacking": {
+              "mode": "none",
+              "group": "A"
+            }
+          },
+          "color": {
+            "mode": "palette-classic"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "transparent",
+                "value": null
+              },
+              {
+                "color": "#FF9830",
+                "value": 17.2
+              },
+              {
+                "color": "#F2495C",
+                "value": 24.5
+              }
+            ]
+          },
+          "unit": "velocityms"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Gió giật"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#B877D9"
+                }
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 12
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Bất thường: gió giật"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "#F2495C"
+                }
+              },
+              {
+                "id": "custom.drawStyle",
+                "value": "points"
+              },
+              {
+                "id": "custom.pointSize",
+                "value": 9
+              },
+              {
+                "id": "custom.showPoints",
+                "value": "always"
+              },
+              {
+                "id": "custom.fillOpacity",
+                "value": 0
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              },
+              {
+                "id": "custom.spanNulls",
+                "value": false
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "calcs": [
+            "max"
+          ]
+        },
+        "tooltip": {
+          "mode": "multi",
+          "sort": "none"
+        }
+      }
+    },
+    {
+      "type": "row",
+      "id": 18,
+      "title": "Nhật ký bất thường",
+      "collapsed": false,
+      "panels": [],
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 41
+      }
+    },
+    {
+      "type": "table",
+      "id": 19,
+      "title": "Nhật ký bất thường (mới nhất trước)",
+      "description": "Bảng weather_anomalies, lọc theo địa điểm, khung thời gian và biến ($field). Độ lệch: σ với Z-score, bội số IQR với IQR, phần vượt ngưỡng với threshold, số giờ với giá trị kẹt. Tối đa 2000 dòng.",
+      "datasource": {
+        "type": "influxdb",
+        "uid": "influxdb3_weather"
+      },
+      "gridPos": {
+        "h": 13,
+        "w": 24,
+        "x": 0,
+        "y": 42
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "influxdb",
+            "uid": "influxdb3_weather"
+          },
+          "rawSql": "SELECT time AS \"Thời gian\", location AS \"Địa điểm\", CASE field WHEN 'temperature_c' THEN 'Nhiệt độ' WHEN 'pressure_msl_hpa' THEN 'Khí áp' WHEN 'wind_gusts_ms' THEN 'Gió giật' WHEN 'rain_24h_mm' THEN 'Mưa 24h' ELSE field END AS \"Biến\", method AS \"Phương pháp\", severity AS \"Mức độ\", round(score, 2) AS \"Độ lệch\", round(value, 1) AS \"Giá trị\", reason AS \"Nguyên nhân\" FROM weather_anomalies WHERE time >= $__timeFrom() AND time <= $__timeTo() AND location = '$location' AND field IN (${field:singlequote}) ORDER BY time DESC LIMIT 2000",
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "Không có bất thường trong khung thời gian đang chọn",
+          "custom": {
+            "align": "auto",
+            "filterable": true,
+            "inspect": false,
+            "cellOptions": {
+              "type": "auto"
+            }
+          },
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "text",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Thời gian"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 165
+              },
+              {
+                "id": "unit",
+                "value": "time:YYYY-MM-DD HH:mm"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Địa điểm"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "hcm": {
+                        "text": "TP.HCM",
+                        "index": 0
+                      },
+                      "hanoi": {
+                        "text": "Hà Nội",
+                        "index": 1
+                      },
+                      "danang": {
+                        "text": "Đà Nẵng",
+                        "index": 2
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Biến"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Phương pháp"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 170
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "climate_zscore": {
+                        "text": "Z-score khí hậu",
+                        "index": 0
+                      },
+                      "persistent_climate_zscore": {
+                        "text": "Z-score khí hậu 168h",
+                        "index": 1
+                      },
+                      "iqr": {
+                        "text": "IQR theo tháng",
+                        "index": 2
+                      },
+                      "threshold": {
+                        "text": "Ngưỡng tuyệt đối",
+                        "index": 3
+                      },
+                      "stuck": {
+                        "text": "Giá trị kẹt",
+                        "index": 4
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Mức độ"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 320
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-background",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "/cấp 1[0-2]|rất mạnh|rất to|đặc biệt gay gắt/",
+                      "result": {
+                        "color": "#F2495C",
+                        "index": 0
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "/cấp [89]|, mạnh|gay gắt/",
+                      "result": {
+                        "color": "#FF9830",
+                        "index": 1
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "/nắng nóng|mưa to|mưa vừa|cấp 7|, vừa/",
+                      "result": {
+                        "color": "#FADE2A",
+                        "index": 2
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "/kẹt/",
+                      "result": {
+                        "color": "#B877D9",
+                        "index": 3
+                      }
+                    }
+                  },
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "/ấm bất thường|mưa nhỏ|cấp 6/",
+                      "result": {
+                        "color": "#5794F2",
+                        "index": 4
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Độ lệch"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 85
+              },
+              {
+                "id": "decimals",
+                "value": 2
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Giá trị"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 80
+              },
+              {
+                "id": "decimals",
+                "value": 1
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Nguyên nhân"
+            },
+            "properties": [
+              {
+                "id": "custom.inspect",
+                "value": true
+              }
+            ]
+          }
+        ]
+      },
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": true,
+          "reducer": [
+            "count"
+          ],
+          "countRows": true,
+          "fields": ""
+        },
+        "sortBy": [
+          {
+            "displayName": "Thời gian",
+            "desc": true
+          }
+        ]
+      }
+    }
+  ]
+}

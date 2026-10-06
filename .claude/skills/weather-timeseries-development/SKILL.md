@@ -54,7 +54,7 @@ Với mỗi cột của nguồn, tự hỏi:
 
 ## 3. Thu thập và làm sạch
 
-- Collector là script CLI, dùng lại `python/config.py`. Tham khảo `python/generator.py` cho cách kết nối, ghi batch và log.
+- Collector là script CLI, dùng lại `python/config.py`. Tham khảo `python/weather_collector.py` cho cách kết nối, ghi batch, log và tự kiểm tra `count(*)`.
 - Các bước làm sạch, mỗi bước một hàm thuần để test được:
   1. parse và chuẩn hóa timestamp về UTC;
   2. chuẩn hóa đơn vị;
@@ -81,9 +81,9 @@ Mỗi điểm bất thường phải trả lời được câu hỏi "tại sao 
 
 ## 5. SQL và Grafana
 
-- SQL theo dialect DataFusion; dùng `date_bin(...)` để gom cửa sổ thời gian (mẫu có trong `queries/03_time_series.sql`).
-- Luôn lọc theo khoảng thời gian trong truy vấn dashboard (`WHERE $__timeFilter(time)`) thay vì quét toàn bảng.
-- Dashboard là file JSON trong `grafana/dashboards_json/`. Datasource weather cần trỏ đúng database weather (xem mục Grafana trong `CLAUDE.md`).
+- SQL theo dialect DataFusion; dùng `date_bin(...)` để gom cửa sổ thời gian (mẫu có trong `queries/weather_analysis/` và dashboard `grafana/dashboards_json/weather_analytics.json`).
+- Luôn lọc theo khoảng thời gian và địa điểm trong truy vấn dashboard (`time >= $__timeFrom() AND time <= $__timeTo() AND location = '$location'`) thay vì quét toàn bảng. Chi phí tăng theo số file Parquet bị chạm tới, nên panel chỉ cần giá trị mới nhất thì chỉ đọc phần cuối của khung.
+- Dashboard là file JSON trong `grafana/dashboards_json/`, datasource uid `influxdb3_weather`. Sau khi sửa, chạy `python/check_dashboard.py` (quy tắc tĩnh + chạy mọi truy vấn panel qua Grafana) và xem dashboard thật trên trình duyệt: có lỗi hiển thị mà API không phát hiện được (xem mục Grafana trong `CLAUDE.md`).
 
 ## 6. Hạ tầng
 

@@ -42,7 +42,7 @@ Anomaly Detection        (Python và/hoặc SQL)
 Grafana                  (:3000, datasource InfluxDB chế độ SQL qua Flight SQL)
 ```
 
-Hiện tại mới có hạ tầng và demo server monitoring legacy chạy trên kiến trúc này. Các tầng weather chưa được implement.
+Mọi tầng đã được implement (P2–P8). Demo server monitoring của Phase 1 đã bị gỡ ở P8; lịch sử còn ở tag `phase1-essay`.
 
 ## Technology Stack
 
@@ -69,12 +69,11 @@ python/
   evaluate_anomaly.py     # P7: so sánh các phương pháp trên dữ liệu thật (chỉ đọc DB)
   anomaly_job.py          # P7: chạy các phương pháp đã chọn, xóa rồi ghi lại bảng weather_anomalies, đối chiếu count(*)
   survey_weather_source.py  # P2: script khảo sát nguồn (chỉ đọc)
-  generator.py            # LEGACY — sinh dữ liệu server cho dashboard legacy; xóa cùng dashboard ở P8
+  check_dashboard.py      # P8: kiểm tra tĩnh dashboard JSON + chạy mọi truy vấn panel qua Grafana (+ test_check_dashboard.py)
 queries/weather_analysis/ # P6: 5 file SQL phân tích weather (giờ VN = time + 7h), có README
-queries/*.sql             # LEGACY — 15 câu SQL cho server_metrics (dashboard legacy)
 grafana/
-  provisioning/           # KEEP — datasource + dashboard provider
-  dashboards_json/        # LEGACY — dashboard server_monitoring.json
+  provisioning/           # datasource influxdb3_weather + dashboard provider "Weather"
+  dashboards_json/        # P8: weather_analytics.json
 archive/phase1-essay/     # Đóng băng: module benchmark + báo cáo + kịch bản demo tiểu luận
 .claude/skills/weather-timeseries-development/   # skill quy trình phát triển đồ án
 ```
@@ -207,16 +206,46 @@ Các sự thật về dữ liệu rút ra từ P6 (`queries/weather_analysis/`) 
 ## Grafana
 
 - Mọi cấu hình được provisioning từ file. Grafana tự nạp lại file dashboard mỗi 5 giây; sửa dashboard bằng cách sửa JSON trong `grafana/dashboards_json/`.
-- Datasource (`grafana/provisioning/datasources/influxdb3.yml`): uid `influxdb3_datasource`, URL `https://influxdb:8181` (mạng nội bộ Docker), `version: SQL`. Hiện **`dbName` đang hard-code `server_monitoring`**. Khi có database weather, phải thêm datasource thứ hai với uid mới hoặc đổi `dbName`. Docker-compose đã truyền sẵn biến `INFLUXDB_DATABASE` vào container Grafana nhưng file datasource chưa dùng biến này.
+- Datasource (`grafana/provisioning/datasources/influxdb3.yml`): tên `InfluxDB 3 Weather`, uid `influxdb3_weather`, URL `https://influxdb:8181` (mạng nội bộ Docker), `version: SQL`, `dbName: ${WEATHER_INFLUXDB_DATABASE}`. Compose truyền biến này vào Grafana với mặc định `weather`; đổi biến thì phải tạo lại container (`docker compose up -d grafana`), `restart` không nạp env mới. File có `deleteDatasources` để gỡ datasource legacy `InfluxDB 3 Core`.
 - `ca-bundle.crt` được mount đè lên CA bundle hệ thống của Grafana để Grafana tin chứng chỉ self-signed của InfluxDB.
-- Dashboard legacy: `server_monitoring.json` (uid `server_monitoring_influxdb3`). Các biến `$host` và `$region` đã khai báo nhưng chưa panel nào dùng.
+- **Dashboard `weather_analytics.json`** (uid `weather_analytics`, múi giờ `Asia/Ho_Chi_Minh`, mặc định 7 ngày, refresh 5 phút):
+  - Biến:
+    - `$location` (mặc định `hcm`);
+    - `$time_bin` (interval: auto / 1h / 6h / 1d; auto chọn khoảng 200 điểm, tối thiểu 1h);
+    - `$field` (multi, chỉ lọc bảng nhật ký).
+  - Hàng **Tổng quan tức thời**: 5 stat có sparkline, 1 stat đếm cờ bất thường, 2 gauge (nhiệt độ 15/35/37/39 °C; gió giật Beaufort 10,8/17,2/24,5 m/s), bar gauge số giờ bị gắn cờ theo nhóm.
+  - Hàng **Diễn biến chuỗi thời gian**: nhiệt độ + điểm sương (đường ngưỡng 35 °C); khí áp (trục trái) + mưa dạng cột (trục phải).
+  - Hàng **Phát hiện bất thường**:
+    - State Timeline 5 nhóm (nắng nóng kéo dài, áp suất thấp, gió giật, mưa 24h, dữ liệu kẹt), mức 0–3 tô màu bằng thresholds;
+    - khí áp và gió giật, mỗi biểu đồ chồng chấm đỏ tại giờ bị gắn cờ.
+  - Hàng **Nhật ký bất thường**: bảng `weather_anomalies`; cột Mức độ là badge màu theo regex (đỏ: cấp ≥ 10 / rất mạnh / rất to; cam: cấp 8–9 / mạnh / gay gắt; vàng: nắng nóng / mưa to / vừa; tím: kẹt).
+  - Preset thời gian là **dashboard links** (Yagi Hà Nội 06–09/09/2024, nắng nóng TP.HCM 04/2024, 7 ngày gần nhất). Grafana 11.5.2 không hỗ trợ preset có nhãn trong timepicker: `quickRanges` của bản này chỉ là chuỗi tương đối của schema v2.
+- **Quy ước truy vấn dashboard** (kiểm tra tự động bằng `check_dashboard.py` / `test_check_dashboard.py`):
+  - Mọi truy vấn có `$__timeFrom()`, `$__timeTo()` và `location = '$location'`.
+  - Gom nhóm bằng `date_bin(INTERVAL '$time_bin', time, TIMESTAMP '1970-01-01T17:00:00Z')`; origin 17:00Z để bin ngày/6h khớp giờ VN. DataFusion nhận `1h`/`6h`/`1d`.
+  - SQL được gộp thành một dòng, nên **không dùng comment `--`** (comment sẽ nuốt phần còn lại của câu lệnh).
+  - Gauge chỉ đọc 24 giờ cuối của khung. State Timeline sinh trục thời gian bằng `generate_series`, nên chỉ đọc bảng `weather_anomalies`.
+  - Value mapping có màu **không tô màu** state-timeline với giá trị int64 (đã kiểm chứng bằng ảnh chụp). Dùng thresholds để tô màu, mapping chỉ để đổi chữ.
+  - Đơn vị mưa dùng `suffix: mm`, không dùng `lengthmm`: `lengthmm` tự đổi 0,2 mm thành "200 µm".
+- **Độ trễ đo qua `/api/ds/query` (2026-10-06, `check_dashboard.py`, mỗi truy vấn chạy một lần, đã warm):**
+
+  | Kịch bản | Truy vấn đọc `weather_hourly` (min / trung vị / max) | Truy vấn nhẹ (`weather_anomalies`, gauge) |
+  |---|---|---|
+  | 7 ngày (3 location) | 57–138 ms, trung vị khoảng 90 ms | 60–123 ms |
+  | Yagi 4 ngày | 57 / 134 / 260 ms | trung vị 81 ms |
+  | Nắng nóng 30 ngày | 136 / 143 / 169 ms | trung vị 48 ms |
+  | 1 năm | 1,31 / 1,48 / 1,57 s | trung vị 200 ms |
+
+  - Mục tiêu dưới 100 ms chỉ đạt được với khung ngắn.
+  - Riêng vòng HTTP Grafana → Flight SQL đã chiếm khoảng 40–80 ms.
+  - Với khung dài, chi phí tỉ lệ với số file Parquet bị chạm tới (8.760 file/năm). `date_bin` giảm số điểm trả về nhưng không giảm số file phải đọc. Muốn nhanh hơn cần compaction (bản Enterprise) hoặc bảng downsample riêng; cả hai đều chưa làm.
 
 ## Environment Configuration
 
-- `.env` ở root (git ignore), mẫu ở `.env.example`. Gồm: `INFLUXDB_URL`, `INFLUXDB_TOKEN`, `INFLUXDB_DATABASE`, `GRAFANA_ADMIN_USER`, `GRAFANA_ADMIN_PASSWORD`.
+- `.env` ở root (git ignore), mẫu ở `.env.example`. Gồm: `INFLUXDB_URL`, `INFLUXDB_TOKEN`, `INFLUXDB_DATABASE`, `WEATHER_INFLUXDB_DATABASE` (tùy chọn, mặc định `weather`), `GRAFANA_ADMIN_USER`, `GRAFANA_ADMIN_PASSWORD`.
 - `INFLUXDB_TOKEN` vừa là token quản trị InfluxDB (`INFLUXDB3_AUTH_TOKEN` trong compose) vừa được truyền vào datasource Grafana.
 - InfluxDB chạy **TLS**, nên `INFLUXDB_URL` phải là `https://localhost:8181`. Chứng chỉ là self-signed (SAN: `influxdb`, `influxdb3-core`, `localhost`, `127.0.0.1`), nên client Python dùng `verify_ssl=False`.
-- `python/config.py` mặc định `INFLUXDB_DATABASE=server_monitoring` (cho demo legacy). Script weather dùng `WEATHER_INFLUXDB_DATABASE` (mặc định `weather`) hoặc `--database`, rồi thay vào config bằng `dataclasses.replace`.
+- `python/config.py` mặc định `INFLUXDB_DATABASE=server_monitoring` (tàn dư Phase 1; không script nào còn dùng giá trị này). Script weather dùng `WEATHER_INFLUXDB_DATABASE` (mặc định `weather`) hoặc `--database`, rồi thay vào config bằng `dataclasses.replace`.
 
 ## Development Commands
 
@@ -227,7 +256,6 @@ docker compose up -d                      # khởi động InfluxDB + Grafana
 docker compose ps
 docker compose logs -f influxdb           # tên service là "influxdb", tên container là "influxdb3-core"
 
-.venv/Scripts/python.exe python/generator.py --interval 1 --iterations 10   # demo legacy; --iterations 0 = chạy liên tục
 .venv/Scripts/python.exe python/survey_weather_source.py --rows 12          # P2: khảo sát Open-Meteo (chỉ đọc, không ghi InfluxDB)
 
 # Pipeline weather (P3/P4). Mọi lệnh tự đọc lại và kiểm tra count(*) sau khi ghi; lệch thì exit 1.
@@ -245,6 +273,10 @@ docker compose logs -f influxdb           # tên service là "influxdb", tên co
 .venv/Scripts/python.exe python/anomaly_job.py --dry-run   # xem trước số dòng, không động vào DB
 .venv/Scripts/python.exe python/anomaly_job.py             # xóa rồi ghi lại weather_anomalies, đối chiếu count(*)
 
+# P8: kiểm tra dashboard. Phần tĩnh không cần mạng; phần live chạy 18 truy vấn x 6 kịch bản qua Grafana, khoảng 30 giây
+.venv/Scripts/python.exe python/check_dashboard.py [--static-only] [--scenarios yagi,heatwave]
+docker compose up -d grafana              # sau khi đổi env/provisioning datasource (restart không nạp env mới)
+
 # Container đã có sẵn INFLUXDB3_AUTH_TOKEN nên CLI bên trong không cần --token
 docker exec influxdb3-core influxdb3 query --host https://127.0.0.1:8181 --tls-no-verify \
   -d weather "SELECT location, count(*) FROM weather_hourly GROUP BY location"
@@ -252,7 +284,7 @@ docker exec influxdb3-core influxdb3 query --host https://127.0.0.1:8181 --tls-n
 
 Chạy lại `backfill` cho khoảng 2 tuần gần nhất sau vài ngày: ERA5 trễ khoảng 6 ngày, nên giá trị archive của những ngày gần nhất (tạm lấy từ IFS) sẽ được cập nhật. Việc ghi đè là idempotent nên chạy lại an toàn.
 
-Grafana: http://localhost:3000 (đăng nhập bằng tài khoản trong `.env`).
+Grafana: http://localhost:3000/d/weather_analytics (đăng nhập bằng tài khoản trong `.env`). Trước khi demo: chạy `weather_collector.py recent`, rồi `anomaly_job.py`.
 
 ## Testing
 
@@ -260,6 +292,7 @@ Grafana: http://localhost:3000 (đăng nhập bằng tài khoản trong `.env`).
   - `.venv/Scripts/python.exe python/test_weather_cleaning.py`: 11 test cho cleaning, schema/line protocol (gồm cả `weather_anomalies`) và chia chunk ngày; không cần mạng, không cần DB.
   - `.venv/Scripts/python.exe python/test_run_sql.py`: test việc tách câu lệnh SQL (dấu `;` trong comment không được tách).
   - `.venv/Scripts/python.exe python/test_weather_anomaly.py`: 14 test cho các detector (gồm `persistent_climate_zscore` và các hàm severity), dùng dữ liệu tổng hợp có đáp án. Ví dụ: Z-score khí hậu không gắn cờ chu kỳ ngày – đêm và loại năm đang xét khỏi baseline; rolling chỉ dùng các giờ trước điểm đang xét; IQR thất bại khi ≥ 75% giá trị bằng 0.
+  - `.venv/Scripts/python.exe python/test_check_dashboard.py`: 3 test. Gồm thay biến dashboard (không đụng `$__macro`), phát hiện truy vấn thiếu filter thời gian/location, và dashboard JSON đã commit thỏa mọi quy tắc.
   - `archive/phase1-essay/benchmark/test_storage_logic.py`: test của Phase 1 (đã archive).
 - Kiểm thử tích hợp của pipeline nằm sẵn trong collector: sau mỗi lần ghi, lệnh tự đọc lại và so `count(*)`.
 - Với code mới:
@@ -320,7 +353,7 @@ Roadmap đồ án:
 
 **P6 hoàn thành ngày 2026-10-06:** SQL phân tích nằm ở `queries/weather_analysis/`, chạy bằng `python/run_sql.py`. Kết quả P6 là đầu vào cho các bước "Inspect data" và "Analyze distribution" của P7.
 
-**P7 hoàn thành ngày 2026-10-06** (đã ghi vào DB; chờ commit):
+**P7 hoàn thành ngày 2026-10-06** (commit `a2e360c`):
 - **Quyết định đã chốt:**
   1. Baseline khí hậu (cùng tháng và cùng giờ địa phương) chỉ dùng dữ liệu 2024–2026, so mỗi năm với các năm còn lại (leave-one-year-out). Không nạp thêm lịch sử, vì mỗi giờ nạp bù là một file Parquet. Baseline mỏng (khoảng 2 năm) là hạn chế cần ghi trong báo cáo.
   2. Kết quả lưu ở bảng `weather_anomalies` (xem Data Model), mỗi lần chạy thì xóa rồi ghi lại toàn bộ.
@@ -345,6 +378,28 @@ Roadmap đồ án:
   - `persistent_climate_zscore` chiếm khoảng 72% số dòng, vì nó gắn cờ khoảng 10% số giờ: mỗi đợt kéo dài khoảng 1 tuần.
   - **Stuck gắn cờ 12 giờ ở Hà Nội** (đêm 27–28/02/2024 và 20/02/2025, nhiệt độ đứng yên 6 giờ). Áp suất vẫn biến thiên trong cùng lúc, nên đây là **đêm đông lặng gió tự nhiên**, không phải lỗi feed. Cải tiến có thể làm: chỉ gắn cờ khi nhiều field cùng đứng yên.
 
-**Tiếp theo: P8** (Grafana dashboard cho `weather_hourly` + `weather_anomalies`).
+**P8 hoàn thành ngày 2026-10-06** (chờ commit). Chi tiết dashboard và quy ước truy vấn nằm ở mục Grafana.
+- **Đã dọn legacy (người dùng duyệt):**
+  - đã xóa `server_monitoring.json`, `python/generator.py`, `queries/01–03*.sql`, `queries/README.md`;
+  - datasource `InfluxDB 3 Core` (uid `influxdb3_datasource`) được gỡ bằng `deleteDatasources`;
+  - datasource FlightSQL tạo tay (uid `PDE06B032DBEFDB92`) đã xóa qua API.
+
+  Grafana hiện chỉ còn 1 datasource (`influxdb3_weather`, default, Health OK) và 1 dashboard (`weather_analytics`).
+- **Khác với yêu cầu ban đầu:**
+  - preset thời gian làm bằng dashboard links (lý do ở mục Grafana);
+  - `dbName` lấy từ `WEATHER_INFLUXDB_DATABASE` chứ không dùng `INFLUXDB_DATABASE`, vì `.env` vẫn đặt `INFLUXDB_DATABASE=server_monitoring`;
+  - không có hàng "So sánh 3 vùng" như kế hoạch cũ; người dùng thay bằng bố cục 4 hàng.
+- **Kiểm thử:**
+  - `check_dashboard.py`: 108/108 truy vấn OK (18 truy vấn × 6 kịch bản: 7 ngày × 3 location, Yagi, nắng nóng, 1 năm).
+  - Log Grafana sau `docker compose restart grafana` không có error.
+  - 30/30 unit test pass.
+  - Đã chụp ảnh dashboard bằng Chrome headless qua DevTools Protocol (script tạm, không nằm trong repo) và xem trực tiếp. Hai lỗi chỉ ảnh chụp mới lộ ra đã được sửa: state-timeline không lên màu, mưa hiển thị µm.
+- **Hiển thị khớp kết quả P7:**
+  - Yagi: chấm đỏ tại 982 hPa và 32,4 m/s.
+  - State Timeline cho thấy áp suất thấp được gắn cờ trước gió và mưa.
+  - Nắng nóng TP.HCM 04/2024 hiện thành các dải cam/đỏ kéo dài.
+  - 7 ngày gần nhất ở TP.HCM: 0 cờ, mưa 24h 19,2 mm.
+
+**Tiếp theo: P9** (Testing & Evaluation).
 
 Cập nhật mục này mỗi khi chuyển phase.
