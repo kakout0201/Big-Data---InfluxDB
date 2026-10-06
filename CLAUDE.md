@@ -64,9 +64,11 @@ python/
   weather_cleaning.py     # P4: các bước làm sạch dạng hàm thuần + CleaningReport
   weather_collector.py    # P3: CLI backfill / recent / verify
   test_weather_cleaning.py
+  run_sql.py              # P6: chạy file .sql từng câu lệnh, in bảng (+ test_run_sql.py)
   survey_weather_source.py  # P2: script khảo sát nguồn (chỉ đọc)
   generator.py            # LEGACY — sinh dữ liệu server cho dashboard legacy; xóa cùng dashboard ở P8
-queries/*.sql             # LEGACY — 15 câu SQL cho server_metrics; dùng làm mẫu cho SQL weather
+queries/weather_analysis/ # P6: 5 file SQL phân tích weather (giờ VN = time + 7h), có README
+queries/*.sql             # LEGACY — 15 câu SQL cho server_metrics (dashboard legacy)
 grafana/
   provisioning/           # KEEP — datasource + dashboard provider
   dashboards_json/        # LEGACY — dashboard server_monitoring.json
@@ -170,6 +172,23 @@ Chức năng trọng tâm của đồ án. Các phương pháp được phép đ
 
 Quy trình bắt buộc: Inspect data → Analyze distribution → Compare methods → Select method → Implement → Evaluate. Phương pháp được chọn phải giải thích được trong báo cáo và khi bảo vệ. Chi tiết quy trình nằm trong skill `weather-timeseries-development`.
 
+Các sự thật về dữ liệu rút ra từ P6 (`queries/weather_analysis/`) chi phối việc chọn phương pháp:
+- **Chu kỳ ngày – đêm mạnh:** nhiệt độ TP.HCM trung bình 24,7 °C lúc 6h và 32,2 °C lúc 13h; biên độ ngày khoảng 10 °C trong mùa khô. Z-score trên toàn bộ chuỗi sẽ gắn cờ theo giờ trong ngày, nên phải dùng baseline theo giờ hoặc baseline cuộn.
+- **Mùa vụ mạnh:**
+  - Áp suất Hà Nội trung bình tháng 1 là 1019,6 hPa, tháng 7 là 1002,0 hPa (lệch khoảng 17 hPa). Ngưỡng áp suất cố định sẽ gắn cờ theo mùa.
+  - Nhiệt độ Hà Nội dao động 7,2–40,2 °C, độ lệch chuẩn 5,4.
+- **Lượng mưa có rất nhiều giá trị 0:** khoảng 70% số giờ không mưa; median của các giờ có mưa chỉ 0,2–0,3 mm. Phân phối không gần chuẩn nên **không dùng Z-score cho mưa**; dùng phân vị, IQR trên các giờ có mưa, hoặc tổng mưa cuộn.
+- **Ca kiểm thử Yagi (Hà Nội), giờ VN:**
+  - Áp suất thấp nhất **982,0 hPa lúc 2024-09-07 20:00**, gió giật cao nhất **32,4 m/s lúc 19:00**, mưa 114 mm trong ngày 07/09.
+  - Biến thiên áp suất 3 giờ xuống tới **−5,2 hPa**.
+  - Tương quan áp suất – gió giật là −0,895 trong bão, so với −0,216 ở tháng 08/2024.
+  - Đây là ca **thay đổi đột ngột**, phù hợp với baseline cuộn.
+- **Ca kiểm thử nắng nóng (TP.HCM, 04/2024):**
+  - Nhiệt độ cao nhất ngày ở mức 35–39,2 °C **kéo dài cả tháng**; 158 giờ ≥ 35 °C, so với 58 giờ (04/2025) và 99 giờ (04/2026).
+  - Đây là bất thường **kéo dài**: baseline cuộn 24h/7 ngày sẽ hấp thụ nó, nên cần baseline khí hậu (cùng tháng và cùng giờ của các năm khác).
+  - Giờ nóng nhất toàn bộ dữ liệu là 39,4 °C lúc 2026-05-01 14:00, không thuộc đợt 2024.
+- **Sự kiện chưa gán nhãn, dùng để kiểm tra false positive / true positive:** Hà Nội 2025-07-22 (988,6 hPa); Đà Nẵng có áp suất thấp nhất 988,5 hPa và gió giật 27 m/s.
+
 ## Grafana
 
 - Mọi cấu hình được provisioning từ file. Grafana tự nạp lại file dashboard mỗi 5 giây; sửa dashboard bằng cách sửa JSON trong `grafana/dashboards_json/`.
@@ -203,6 +222,9 @@ docker compose logs -f influxdb           # tên service là "influxdb", tên co
 .venv/Scripts/python.exe python/weather_collector.py recent --interval-minutes 60  # lặp liên tục (gần thời gian thực)
 .venv/Scripts/python.exe python/weather_collector.py verify                        # chỉ đọc: số dòng, giờ thiếu, null
 
+# P6: chạy một file SQL (từng câu lệnh, in bảng kèm tiêu đề lấy từ comment "-- Query N:")
+.venv/Scripts/python.exe python/run_sql.py queries/weather_analysis/03_yagi_hanoi.sql --max-rows 80
+
 # Container đã có sẵn INFLUXDB3_AUTH_TOKEN nên CLI bên trong không cần --token
 docker exec influxdb3-core influxdb3 query --host https://127.0.0.1:8181 --tls-no-verify \
   -d weather "SELECT location, count(*) FROM weather_hourly GROUP BY location"
@@ -216,6 +238,7 @@ Grafana: http://localhost:3000 (đăng nhập bằng tài khoản trong `.env`).
 
 - Không dùng pytest (chưa cài). Test là các hàm `test_*` dùng `assert` thuần, có `main()` riêng, chạy theo đường dẫn file:
   - `.venv/Scripts/python.exe python/test_weather_cleaning.py`: 10 test cho cleaning, schema/line protocol và chia chunk ngày; không cần mạng, không cần DB.
+  - `.venv/Scripts/python.exe python/test_run_sql.py`: test việc tách câu lệnh SQL (dấu `;` trong comment không được tách).
   - `archive/phase1-essay/benchmark/test_storage_logic.py`: test của Phase 1 (đã archive).
 - Kiểm thử tích hợp của pipeline nằm sẵn trong collector: sau mỗi lần ghi, lệnh tự đọc lại và so `count(*)`.
 - Với code mới:
@@ -274,6 +297,14 @@ Roadmap đồ án:
 
 **Đã xử lý `query-file-limit`** bằng cách tăng lên 50000 (xem mục InfluxDB Conventions).
 
-**Tiếp theo: P6** (Queries & Analysis).
+**Đang làm: P6 (Queries & Analysis) và P7 (Anomaly Detection), bắt đầu 2026-10-06.**
+- **P6:** SQL phân tích nằm ở `queries/weather_analysis/`, chạy bằng `python/run_sql.py`. Kết quả P6 là đầu vào cho các bước "Inspect data" và "Analyze distribution" của P7.
+- **P7:** đã có kế hoạch, **chưa implement**.
+  - Sẽ có module `python/weather_anomaly.py` (hàm thuần, có test), so sánh Threshold, Z-score, IQR và Rolling Statistics với baseline 24h và 7 ngày.
+  - Ca kiểm thử thật: bão Yagi (Hà Nội, 09/2024) và nắng nóng (TP.HCM, 04–05/2024).
+  - Người dùng chọn phương pháp sau khi xem bảng so sánh.
+  - **Quyết định đã chốt ngày 2026-10-06:**
+    1. Baseline khí hậu (cùng tháng và cùng giờ địa phương) chỉ dùng dữ liệu 2024–2026, so mỗi năm với các năm còn lại (leave-one-year-out). Không nạp thêm lịch sử, vì mỗi giờ nạp bù là một file Parquet. Baseline mỏng (khoảng 2 năm) là hạn chế cần ghi trong báo cáo.
+    2. Kết quả bất thường lưu vào **bảng InfluxDB riêng**, tách khỏi `weather_hourly`, để Grafana dùng ở P8. Thiết kế bảng (tag, field) phải trình bày cho người dùng trước khi ghi.
 
 Cập nhật mục này mỗi khi chuyển phase.
