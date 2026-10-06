@@ -91,8 +91,27 @@ archive/phase1-essay/     # Đóng băng: module benchmark + báo cáo + kịch 
 - **Giới hạn của Core với dữ liệu lịch sử (đã kiểm chứng ngày 2026-10-06, InfluxDB 3 Core 3.11.2):**
   - Dữ liệu được chia theo khối thời gian `gen1-duration` (mặc định 10 phút; chỉ hỗ trợ 1m/5m/10m), và **Core không có compaction**. Vì vậy mỗi giờ lịch sử nạp bù là một khối riêng: 24.192 khối cho 2024-01 → 2026-10.
   - Khi persist, mỗi khối thành một file Parquet. `query-file-limit` mặc định là **432 file**; truy vấn nào trải dài hơn khoảng 432 giờ (~18 ngày) dữ liệu đã persist sẽ **bị lỗi**.
-  - Ngay khi dữ liệu còn trong bộ đệm, truy vấn toàn lịch sử đã mất khoảng 2 giây (log báo `dedup ... fanout too wide`); truy vấn 7 ngày chỉ mất khoảng 0,02 giây.
-  - Cách xử lý đang chờ người dùng quyết định; xem mục Current Development Phase.
+  - **Khi nào persist (3.11.2):** bản này **không có** `--force-snapshot-max-age`; tài liệu online mô tả phiên bản khác.
+    - Snapshot chỉ chạy theo số file WAL hoặc khi thiếu bộ nhớ (`--force-snapshot-mem-size`).
+    - Lịch sử snapshot cho thấy khoảng cách khoảng **1,5 × `wal-files-per-snapshot`**, tức ~900 file WAL (1812 → 2708; snapshot kế tiếp chạy đúng ở ~3608).
+    - Mỗi lần ghi, nếu cách lần trước ≥ 1 giây, tạo một file WAL. Với collector chạy mỗi giờ, dữ liệu có thể nằm trong RAM/WAL nhiều tuần mà không persist.
+    - Server không nhận ghi sẽ không bao giờ snapshot (đã quan sát 8 giờ không persist).
+  - **Số liệu đo (2026-10-06):** 72.636 dòng, 1 warm-up + 5 lần đo, lấy trung vị, chỉ bấm giờ quanh `client.query()`. Script đo nằm ngoài repo; phương pháp giống `archive/phase1-essay/benchmark/`.
+
+    | Truy vấn | Trong RAM (chưa persist) | Sau persist (24.012 file Parquet) |
+    |---|---|---|
+    | `count(*)` toàn bảng | 1,789 s | 1,330 s |
+    | 7 ngày, mọi field (cửa sổ cố định từ 2026-09-28 20:00Z) | 0,015 s (504 dòng) | 0,025 s (528 dòng) |
+    | Toàn lịch sử: trung bình theo ngày, Hà Nội | 2,001 s | 1,817 s |
+
+    - Sau persist: **24.012 file**, trung bình **3 dòng và 6,2 KB mỗi file** (1 giờ × 3 location). Tổng 144 MB Parquet cho 72.036 dòng, khoảng 2 KB/dòng; thư mục `dbs/3` chiếm 286 MB trên đĩa.
+    - Log truy vấn xác nhận `count(*)` đọc `parquet_files=24012`, tức với giới hạn mặc định 432 truy vấn này sẽ bị từ chối. Lỗi này suy ra từ tài liệu và số file, **chưa quan sát trực tiếp**, vì giới hạn đã được nâng trước khi persist.
+    - Diễn giải:
+      - Chi phí chính nằm ở số lượng phân mảnh (khoảng 24k khối/file), không nằm ở số dòng (72k dòng là nhỏ). Khi còn trong RAM, log báo `dedup ... fanout too wide`.
+      - Persist không làm chậm truy vấn dài; truy vấn ngắn vẫn dưới 30 ms.
+  - **Đã xử lý (người dùng duyệt):** đặt `INFLUXDB3_QUERY_FILE_LIMIT=50000` trong `docker-compose.yml`, đủ cho khoảng 5,7 năm dữ liệu theo giờ. Đổi giá trị này phải tạo lại container bằng `docker compose up -d influxdb`.
+  - Đây là hạn chế của Core cần ghi trong báo cáo: Core tối ưu cho dữ liệu gần đây; bản Enterprise có compactor để gộp file.
+  - Truy vấn phân tích nên luôn lọc theo khoảng thời gian để chỉ chạm vào những file cần thiết.
 
 ## Data Model
 
@@ -253,8 +272,8 @@ Roadmap đồ án:
 
 **P3 + P4 hoàn thành ngày 2026-10-06:** collector và cleaning đã chạy trên dữ liệu thật, 10/10 unit test pass, `count(*)` khớp. P5 (schema) thực chất đã được chốt từ P2 và được tạo khi ghi lần đầu.
 
-**Vấn đề mở, chặn P6/P7:** `query-file-limit` của Core (xem mục InfluxDB Conventions). Truy vấn trên nhiều năm sẽ lỗi sau khi dữ liệu được persist. Hướng xử lý đang chờ người dùng chọn; không tự sửa `docker-compose.yml`.
+**Đã xử lý `query-file-limit`** bằng cách tăng lên 50000 (xem mục InfluxDB Conventions).
 
-**Tiếp theo: P6** (Queries & Analysis), sau khi xử lý vấn đề trên.
+**Tiếp theo: P6** (Queries & Analysis).
 
 Cập nhật mục này mỗi khi chuyển phase.

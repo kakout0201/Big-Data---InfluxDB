@@ -14,6 +14,10 @@ services:
       - INFLUXDB3_HOST_URL=https://127.0.0.1:8181
       - INFLUXDB3_AUTH_TOKEN=${INFLUXDB_TOKEN}
       - INFLUXDB3_TLS_NO_VERIFY=true
+      # Core writes one Parquet file per 10-minute gen1 block and has no compaction, so hourly
+      # weather history since 2024 (~24k hours) becomes ~24k files. The default limit of 432
+      # files per query (~18 days of hourly data) would make multi-year queries fail.
+      - INFLUXDB3_QUERY_FILE_LIMIT=50000
     volumes:
       - influxdb3_data:/home/influxdb3/.influxdb3
       - ./certs:/certs:ro
