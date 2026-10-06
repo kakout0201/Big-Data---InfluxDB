@@ -110,7 +110,24 @@ Nguồn dữ liệu: *Weather data by [Open-Meteo.com](https://open-meteo.com/)*
 
 ## 7. Anomaly Detection
 
-Chức năng trọng tâm của đồ án. Các phương pháp thống kê được đánh giá: **Threshold, Z-score, IQR, Moving Average, Rolling Statistics**. Quy trình: khảo sát dữ liệu → phân tích phân phối → so sánh các phương pháp → chọn → triển khai → đánh giá. Phương pháp cuối cùng và lý do lựa chọn sẽ được ghi lại tại đây.
+Chức năng trọng tâm của đồ án. Chỉ dùng các phương pháp thống kê giải thích được, không dùng ML (`python/weather_anomaly.py`). Mỗi điểm bị gắn cờ đều kèm câu giải thích, ví dụ: *"982.0 hPa lệch -8.5σ so với TB cùng tháng, cùng giờ các năm khác (1008.9 hPa)"*.
+
+Các phương pháp đã được so sánh trên hai sự kiện thật (bão Yagi ở Hà Nội 09/2024, nắng nóng ở TP.HCM 04/2024) và trên bất thường giả có đáp án (`python/evaluate_anomaly.py`). Phương pháp được chọn cho từng biến:
+
+| Biến | Phương pháp | Lý do |
+|---|---|---|
+| Áp suất | Z-score khí hậu (cùng tháng và giờ của các năm khác), k = 3 | Phát hiện Yagi sớm 24 giờ, 0,7 báo động giả/năm |
+| Gió giật | IQR theo tháng, cộng ngưỡng cấp 8 (17,2 m/s) | Ít báo động giả; mức nghiêm trọng gắn theo cấp Beaufort |
+| Mưa 24h | IQR trên các khoảng có mưa, cộng ngưỡng 50 mm | Phù hợp với phân phối có rất nhiều giá trị 0 |
+| Nhiệt độ | Trung bình 168 giờ của Z-score khí hậu ≥ 1,0 | Bắt được nắng nóng kéo dài (18/30 ngày), điều mà các phương pháp xét từng giờ bỏ sót |
+| Chất lượng dữ liệu | Phát hiện giá trị đứng yên ≥ 6 giờ | Bắt được 100% đoạn bị kẹt giả lập |
+
+Kết quả được lưu vào bảng `weather_anomalies`:
+
+```bash
+python python/anomaly_job.py --dry-run   # xem trước
+python python/anomaly_job.py             # xóa rồi ghi lại bảng, đối chiếu count(*)
+```
 
 ## 8. Grafana
 
@@ -138,9 +155,9 @@ CLAUDE.md        Hướng dẫn chi tiết cho việc phát triển với Claude
 | P3 | Thu thập dữ liệu | Hoàn thành |
 | P4 | Làm sạch dữ liệu | Hoàn thành |
 | P5 | Schema InfluxDB cho dữ liệu thời tiết | Hoàn thành |
-| P6 | Truy vấn và phân tích | Tiếp theo |
-| P7 | Phát hiện bất thường | |
-| P8 | Grafana dashboard | |
+| P6 | Truy vấn và phân tích | Hoàn thành |
+| P7 | Phát hiện bất thường | Hoàn thành |
+| P8 | Grafana dashboard | Tiếp theo |
 | P9 | Kiểm thử và đánh giá | |
 | P10 | Demo và báo cáo | |
 

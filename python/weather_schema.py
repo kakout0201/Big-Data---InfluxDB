@@ -57,6 +57,36 @@ VALID_WEATHER_CODES: FrozenSet[int] = frozenset({
 })
 
 
+# ---------------------------------------------------------------------------
+# Anomaly results (Roadmap P7) — derived data, rebuilt from scratch on every run
+# ---------------------------------------------------------------------------
+# Table weather_anomalies: one row per flagged hour per (location, field, method, direction).
+#   tags   : location, field, method, direction (high | low | none for stuck values)
+#   time   : the flagged hour (same timestamp as weather_hourly, for overlays)
+#   fields : value, baseline, score, k (float); severity, reason, detected_at (string)
+# `value` is what the method evaluated (e.g. the 168 h mean for persistent_climate_zscore,
+# the 24 h sum for rain_24h_mm); `k` is the method parameter (z-limit, IQR k, threshold, run length).
+ANOMALY_TABLE = "weather_anomalies"
+ANOMALY_TAGS: Tuple[str, ...] = ("location", "field", "method", "direction")
+ANOMALY_FLOAT_FIELDS: Tuple[str, ...] = ("value", "baseline", "score", "k")
+ANOMALY_STRING_FIELDS: Tuple[str, ...] = ("severity", "reason", "detected_at")
+
+
+def anomaly_to_point(record: Dict[str, Any]) -> Point:
+    """Build a weather_anomalies Point; NaN/None floats are omitted (line protocol has no NaN)."""
+    point = Point(ANOMALY_TABLE)
+    for tag in ANOMALY_TAGS:
+        point = point.tag(tag, record[tag])
+    for name in ANOMALY_FLOAT_FIELDS:
+        value = record.get(name)
+        if value is not None and value == value:          # skip None and NaN
+            point = point.field(name, float(value))
+    for name in ANOMALY_STRING_FIELDS:
+        if record.get(name):
+            point = point.field(name, str(record[name]))
+    return point.time(record["time"])
+
+
 def to_point(record: Dict[str, Any]) -> Point:
     """Build an InfluxDB Point from a cleaned record; None-valued fields are omitted."""
     point = Point(TABLE).tag(LOCATION_TAG, record["location"])

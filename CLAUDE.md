@@ -65,6 +65,9 @@ python/
   weather_collector.py    # P3: CLI backfill / recent / verify
   test_weather_cleaning.py
   run_sql.py              # P6: chạy file .sql từng câu lệnh, in bảng (+ test_run_sql.py)
+  weather_anomaly.py      # P7: các detector dạng hàm thuần (numpy) + inject/metrics (+ test_weather_anomaly.py)
+  evaluate_anomaly.py     # P7: so sánh các phương pháp trên dữ liệu thật (chỉ đọc DB)
+  anomaly_job.py          # P7: chạy các phương pháp đã chọn, xóa rồi ghi lại bảng weather_anomalies, đối chiếu count(*)
   survey_weather_source.py  # P2: script khảo sát nguồn (chỉ đọc)
   generator.py            # LEGACY — sinh dữ liệu server cho dashboard legacy; xóa cùng dashboard ở P8
 queries/weather_analysis/ # P6: 5 file SQL phân tích weather (giờ VN = time + 7h), có README
@@ -138,6 +141,18 @@ Quy ước dữ liệu:
   - Cả hai chiều đã được kiểm chứng trên database thật.
 - **Giá trị thiếu (JSON `null`):** không nội suy; bỏ field đó khỏi point, đếm vào báo cáo làm sạch. Giờ nào mọi field đều null thì bỏ cả dòng.
 - **Tọa độ:** tọa độ trung tâm thành phố và tọa độ ô lưới sau khi snap nằm trong `open_meteo.LOCATIONS` và output của script survey, không lưu trong InfluxDB.
+
+**Bảng kết quả `weather_anomalies`** (P7, dữ liệu dẫn xuất; định nghĩa ở `weather_schema.py`):
+
+| Thành phần | Giá trị |
+|---|---|
+| Tag | `location`; `field` (`temperature_c`, `pressure_msl_hpa`, `wind_gusts_ms`, `rain_24h_mm`); `method`; `direction` (`high`, `low`, hoặc `none` cho `stuck`) |
+| Time | giờ bị gắn cờ, trùng timestamp với `weather_hourly` |
+| Field float | `value` (giá trị mà phương pháp đã đánh giá: trung bình 168h với `persistent_climate_zscore`, tổng 24h với `rain_24h_mm`), `baseline`, `score`, `k` (tham số: giới hạn z, k của IQR, ngưỡng, hoặc độ dài đợt kẹt) |
+| Field string | `severity` (cấp Beaufort, mức mưa 24h, mức nắng nóng 35/37/39 °C, độ mạnh của z), `reason` (câu giải thích), `detected_at` |
+
+- Chỉ lưu các điểm bị gắn cờ.
+- **Không ghi tay vào bảng này.** `anomaly_job.py` xóa bảng (`influxdb3 delete table --hard-delete now`) rồi ghi lại toàn bộ, nên khi đổi tham số sẽ không còn sót cờ cũ.
 
 Schema legacy `server_metrics` được mô tả ở mục Project History.
 
@@ -225,6 +240,11 @@ docker compose logs -f influxdb           # tên service là "influxdb", tên co
 # P6: chạy một file SQL (từng câu lệnh, in bảng kèm tiêu đề lấy từ comment "-- Query N:")
 .venv/Scripts/python.exe python/run_sql.py queries/weather_analysis/03_yagi_hanoi.sql --max-rows 80
 
+# P7: bảng so sánh phương pháp (Yagi, nắng nóng, 72h gần nhất, bất thường giả); khoảng 25 giây, chỉ đọc
+.venv/Scripts/python.exe python/evaluate_anomaly.py [--k 3.0] [--sensitivity]
+.venv/Scripts/python.exe python/anomaly_job.py --dry-run   # xem trước số dòng, không động vào DB
+.venv/Scripts/python.exe python/anomaly_job.py             # xóa rồi ghi lại weather_anomalies, đối chiếu count(*)
+
 # Container đã có sẵn INFLUXDB3_AUTH_TOKEN nên CLI bên trong không cần --token
 docker exec influxdb3-core influxdb3 query --host https://127.0.0.1:8181 --tls-no-verify \
   -d weather "SELECT location, count(*) FROM weather_hourly GROUP BY location"
@@ -237,8 +257,9 @@ Grafana: http://localhost:3000 (đăng nhập bằng tài khoản trong `.env`).
 ## Testing
 
 - Không dùng pytest (chưa cài). Test là các hàm `test_*` dùng `assert` thuần, có `main()` riêng, chạy theo đường dẫn file:
-  - `.venv/Scripts/python.exe python/test_weather_cleaning.py`: 10 test cho cleaning, schema/line protocol và chia chunk ngày; không cần mạng, không cần DB.
+  - `.venv/Scripts/python.exe python/test_weather_cleaning.py`: 11 test cho cleaning, schema/line protocol (gồm cả `weather_anomalies`) và chia chunk ngày; không cần mạng, không cần DB.
   - `.venv/Scripts/python.exe python/test_run_sql.py`: test việc tách câu lệnh SQL (dấu `;` trong comment không được tách).
+  - `.venv/Scripts/python.exe python/test_weather_anomaly.py`: 14 test cho các detector (gồm `persistent_climate_zscore` và các hàm severity), dùng dữ liệu tổng hợp có đáp án. Ví dụ: Z-score khí hậu không gắn cờ chu kỳ ngày – đêm và loại năm đang xét khỏi baseline; rolling chỉ dùng các giờ trước điểm đang xét; IQR thất bại khi ≥ 75% giá trị bằng 0.
   - `archive/phase1-essay/benchmark/test_storage_logic.py`: test của Phase 1 (đã archive).
 - Kiểm thử tích hợp của pipeline nằm sẵn trong collector: sau mỗi lần ghi, lệnh tự đọc lại và so `count(*)`.
 - Với code mới:
@@ -297,14 +318,33 @@ Roadmap đồ án:
 
 **Đã xử lý `query-file-limit`** bằng cách tăng lên 50000 (xem mục InfluxDB Conventions).
 
-**Đang làm: P6 (Queries & Analysis) và P7 (Anomaly Detection), bắt đầu 2026-10-06.**
-- **P6:** SQL phân tích nằm ở `queries/weather_analysis/`, chạy bằng `python/run_sql.py`. Kết quả P6 là đầu vào cho các bước "Inspect data" và "Analyze distribution" của P7.
-- **P7:** đã có kế hoạch, **chưa implement**.
-  - Sẽ có module `python/weather_anomaly.py` (hàm thuần, có test), so sánh Threshold, Z-score, IQR và Rolling Statistics với baseline 24h và 7 ngày.
-  - Ca kiểm thử thật: bão Yagi (Hà Nội, 09/2024) và nắng nóng (TP.HCM, 04–05/2024).
-  - Người dùng chọn phương pháp sau khi xem bảng so sánh.
-  - **Quyết định đã chốt ngày 2026-10-06:**
-    1. Baseline khí hậu (cùng tháng và cùng giờ địa phương) chỉ dùng dữ liệu 2024–2026, so mỗi năm với các năm còn lại (leave-one-year-out). Không nạp thêm lịch sử, vì mỗi giờ nạp bù là một file Parquet. Baseline mỏng (khoảng 2 năm) là hạn chế cần ghi trong báo cáo.
-    2. Kết quả bất thường lưu vào **bảng InfluxDB riêng**, tách khỏi `weather_hourly`, để Grafana dùng ở P8. Thiết kế bảng (tag, field) phải trình bày cho người dùng trước khi ghi.
+**P6 hoàn thành ngày 2026-10-06:** SQL phân tích nằm ở `queries/weather_analysis/`, chạy bằng `python/run_sql.py`. Kết quả P6 là đầu vào cho các bước "Inspect data" và "Analyze distribution" của P7.
+
+**P7 hoàn thành ngày 2026-10-06** (đã ghi vào DB; chờ commit):
+- **Quyết định đã chốt:**
+  1. Baseline khí hậu (cùng tháng và cùng giờ địa phương) chỉ dùng dữ liệu 2024–2026, so mỗi năm với các năm còn lại (leave-one-year-out). Không nạp thêm lịch sử, vì mỗi giờ nạp bù là một file Parquet. Baseline mỏng (khoảng 2 năm) là hạn chế cần ghi trong báo cáo.
+  2. Kết quả lưu ở bảng `weather_anomalies` (xem Data Model), mỗi lần chạy thì xóa rồi ghi lại toàn bộ.
+  3. **Phương pháp được chọn** (cấu hình nằm ở `anomaly_job.selected_methods()`):
+     - áp suất: `climate_zscore` k = 3, low;
+     - gió giật: `iqr` k = 3 theo tháng, cộng `threshold` 17,2 m/s;
+     - mưa 24h: `iqr` k = 3 trên các khoảng có mưa (≥ 1 mm) theo tháng, cộng `threshold` 50 mm;
+     - nhiệt độ: `persistent_climate_zscore` (trung bình z khí hậu 168h ≥ 1,0, high);
+     - chất lượng dữ liệu: `stuck` ≥ 6 giờ cho nhiệt độ và áp suất.
+- **Kết quả so sánh** (`evaluate_anomaly.py`, k = 3; số liệu cho báo cáo):
+  - **Yagi (áp suất, low):** Z-score khí hậu tốt nhất: phát hiện **sớm 24 giờ** so với lúc áp suất thấp nhất, 41/72 giờ bị gắn cờ, 0,7 đợt báo động giả mỗi năm. Rolling 24h có 46 đợt/năm. Tendency 3h ≤ −3 hPa vô dụng (219 đợt/năm, vì dao động áp suất ngày – đêm ở vùng nhiệt đới đủ lớn để vượt ngưỡng này).
+  - **Nắng nóng TP.HCM 04/2024:**
+    - Mọi phương pháp xét từng giờ đều thất bại ở k = 3, vì từng giờ chỉ lệch khoảng +2σ. Ở k = 2, Z-score khí hậu bắt được 11/30 ngày nhưng có 67 đợt báo động giả mỗi năm.
+    - Threshold ≥ 35 °C bắt được 30/30 ngày, nhưng nó đo mức độ nguy hiểm tuyệt đối chứ không đo bất thường (58 đợt/năm).
+    - `persistent_climate_zscore` bắt được **18/30 ngày** với 6,9 đợt báo động giả mỗi năm. Bất thường nằm ở độ kéo dài.
+  - **Bất thường giả (TP.HCM 2025):**
+    - Z-score khí hậu có recall spike 0,85–0,9 nhưng precision chỉ 0,14–0,17, vì gắn cờ khoảng 250 giờ "thật" mỗi năm với nhiệt độ.
+    - Rolling 24h hoạt động tốt với áp suất (recall 0,85) nhưng kém với nhiệt độ (0,25), vì chu kỳ ngày – đêm làm độ lệch chuẩn 24h phình to.
+    - Detector stuck có recall 1,0; precision 0,88 là do chính cách gán nhãn.
+  - **72 giờ gần nhất ở TP.HCM (tới 2026-10-06 15:00 giờ VN):** mưa 24h tối đa 19,2 mm, gió giật tối đa 8,5 m/s. Không phương pháp nào được chọn gắn cờ, nghĩa là đây là mưa bình thường của mùa mưa.
+- **Lần chạy `anomaly_job.py` (dữ liệu tới 2026-10-06 08:00 UTC):** 10.813 dòng (HCM 3.418, Hà Nội 2.905, Đà Nẵng 4.490). Cả 18 nhóm `count(*)` khớp với số dòng đã ghi. Chạy lại lần 2 thì bảng bị xóa và ghi lại, vẫn 10.813 dòng và chỉ còn một giá trị `detected_at`.
+  - `persistent_climate_zscore` chiếm khoảng 72% số dòng, vì nó gắn cờ khoảng 10% số giờ: mỗi đợt kéo dài khoảng 1 tuần.
+  - **Stuck gắn cờ 12 giờ ở Hà Nội** (đêm 27–28/02/2024 và 20/02/2025, nhiệt độ đứng yên 6 giờ). Áp suất vẫn biến thiên trong cùng lúc, nên đây là **đêm đông lặng gió tự nhiên**, không phải lỗi feed. Cải tiến có thể làm: chỉ gắn cờ khi nhiều field cùng đứng yên.
+
+**Tiếp theo: P8** (Grafana dashboard cho `weather_hourly` + `weather_anomalies`).
 
 Cập nhật mục này mỗi khi chuyển phase.

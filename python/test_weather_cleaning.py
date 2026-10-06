@@ -20,7 +20,7 @@ from weather_cleaning import (
     validate_units,
 )
 from weather_collector import date_chunks
-from weather_schema import to_point
+from weather_schema import anomaly_to_point, to_point
 
 T0 = 1725688800  # 2024-09-07T06:00:00Z (Typhoon Yagi landfall day)
 NOW = datetime(2024, 9, 7, 8, 30, tzinfo=timezone.utc)
@@ -167,6 +167,23 @@ def test_line_protocol():
     assert 'data_source="archive"' in lp                                 # string field
     assert lp.endswith(f" {T0 * 10**9}"), lp                             # ns timestamp
     print("[PASS] line protocol: float/int/string field types and ns timestamp correct")
+
+
+def test_anomaly_line_protocol():
+    record = {
+        "time": datetime(2024, 9, 7, 13, tzinfo=timezone.utc), "location": "hanoi",
+        "field": "pressure_msl_hpa", "method": "climate_zscore", "direction": "low",
+        "value": 982.0, "baseline": 1008.9, "score": -8.5, "k": 3.0, "severity": "rất mạnh",
+        "reason": "982.0 hPa lệch -8.5σ", "detected_at": "2026-10-06T09:00:00Z",
+    }
+    lp = anomaly_to_point(record).to_line_protocol()
+    assert lp.startswith("weather_anomalies,direction=low,field=pressure_msl_hpa,location=hanoi,"
+                         "method=climate_zscore "), lp
+    assert "value=982" in lp and "score=-8.5" in lp and 'severity="rất mạnh"' in lp
+    assert lp.endswith(f" {T0 * 10**9 + 7 * 3600 * 10**9}"), lp
+    no_baseline = anomaly_to_point({**record, "baseline": float("nan")}).to_line_protocol()
+    assert "baseline=" not in no_baseline                                # NaN omitted
+    print("[PASS] anomaly line protocol: 4 tags, NaN fields omitted, strings and ns timestamp")
 
 
 def test_date_chunks():
